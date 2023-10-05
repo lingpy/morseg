@@ -10,10 +10,7 @@ class BendenMorphemeSegmentator(object):
     A class providing algorithms for morpheme segmentation as described in Benden (2005)
     """
 
-    # TODO ensure correct identification of local maxima
-    # (cases where there is a non-maximum plataeu cause trouble)
     def __init__(self, forms):
-        # TODO get segments from database
         # potentially integrate separate trie models per language in database
         self.trie = Trie()
         self.trie.insert_all(forms)
@@ -116,7 +113,7 @@ if __name__ == "__main__":
 
     segmentator = BendenMorphemeSegmentator(test_segments)
 
-    test_word = ["ɡ", "ʁ", "oː", "s", "f", "aː", "t", "ɐ"]
+    # test_word = ["ɡ", "ʁ", "oː", "s", "f", "aː", "t", "ɐ"]
     # ʃpiːlən
 
     for word in test_segments:
