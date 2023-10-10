@@ -1,23 +1,28 @@
 import math
-from trie import Trie
-from cldf_utils import get_segments_by_language
+from datastruct.trie import Trie
+from utils.cldf_utils import get_segments_by_language
+from segmenter import *
 
-BOUNDARY_SYMBOL = "-"
 
-
-class BendenMorphemeSegmentator(object):
+class BendenMorphemeSegmenter(Segmenter):
     """
     A class providing algorithms for morpheme segmentation as described in Benden (2005)
     """
 
-    def __init__(self, forms):
-        # potentially integrate separate trie models per language in database
-        self.trie = Trie()
-        self.trie.insert_all(forms)
+    def __init__(self, sequences):
+        super().__init__(sequences)
+        self.tries = []
+        self.global_trie = Trie()
 
-    def alg1(self, word):
+        for sequence_cluster in sequences:
+            trie = Trie()
+            trie.insert_all(sequence_cluster)
+            self.tries.append(trie)
+            self.global_trie.insert_all(sequence_cluster)
+
+    def alg1(self, word: list, trie: Trie):
         boundary_indices = []
-        svs = self.trie.get_successor_values(word)
+        svs = trie.get_successor_values(word)
 
         print(svs)
 
@@ -30,9 +35,9 @@ class BendenMorphemeSegmentator(object):
 
         return boundary_indices
 
-    def alg2(self, word):
+    def alg2(self, word: list, trie: Trie):
         boundary_indices = []
-        svs = self.trie.get_successor_values(word)
+        svs = trie.get_successor_values(word)
 
         prev_sv = math.inf
         for i, (_, sv) in enumerate(svs):
@@ -51,9 +56,9 @@ class BendenMorphemeSegmentator(object):
 
         return boundary_indices
 
-    def alg3(self, word):
+    def alg3(self, word: list, trie: Trie):
         boundary_indices = []
-        svs = self.trie.get_successor_values(word)
+        svs = trie.get_successor_values(word)
 
         """
         prev_sv = -1
@@ -85,22 +90,30 @@ class BendenMorphemeSegmentator(object):
 
         return boundary_indices
 
+    def get_trie_for_word(self, word):
+        for i, sequence_cluster in enumerate(self.sequences):
+            if word in sequence_cluster:
+                return self.tries[i]
 
-def find_boundaries(word, algorithm):
-    boundary_indices = algorithm(word)
+        return self.global_trie
 
-    # make sure word is represented as list
-    if isinstance(word, str):
-        word = [*word]
+    def find_boundaries(self, word, algorithm):
+        trie = self.get_trie_for_word(word)
 
-    # copy list in order not to modify the original object
-    word = word.copy()
+        boundary_indices = algorithm(word, trie)
 
-    for n, i in enumerate(boundary_indices):
-        # n is the number of boundaries that has already been added to the word, has to be added to the original target index
-        word.insert(n+i+1, BOUNDARY_SYMBOL)
+        # make sure word is represented as list
+        if isinstance(word, str):
+            word = [*word]
 
-    return word
+        # copy list in order not to modify the original object
+        word = word.copy()
+
+        for n, i in enumerate(boundary_indices):
+            # n is the number of boundaries that has already been added to the word, has to be added to the original target index
+            word.insert(n+i+1, BOUNDARY_SYMBOL)
+
+        return word
 
 
 def format_result_string(result):
@@ -109,17 +122,18 @@ def format_result_string(result):
 
 if __name__ == "__main__":
     segments_by_language = get_segments_by_language()
-    test_segments = segments_by_language["german"]
+    test_segments = [segments_by_language["german"]]
 
-    segmentator = BendenMorphemeSegmentator(test_segments)
+    segmenter = BendenMorphemeSegmenter(test_segments)
 
     # test_word = ["ɡ", "ʁ", "oː", "s", "f", "aː", "t", "ɐ"]
     # ʃpiːlən
 
-    for word in test_segments:
-        print(format_result_string(find_boundaries(word, segmentator.alg1)))
-        print(format_result_string(find_boundaries(word, segmentator.alg2)))
-        print(format_result_string(find_boundaries(word, segmentator.alg3)))
-        print("\n\n")
+    for cluster in test_segments:
+        for word in cluster:
+            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg1)))
+            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg2)))
+            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg3)))
+            print("\n\n")
 
 

@@ -1,34 +1,44 @@
+eos_symbol = "#"  # symbol to be used to indicate the end of a sequence
+
+
 class Trie(object):
     """The trie object"""
+    # TODO maybe represent Trie as Compact Trie for improved efficiency.
 
     def __init__(self):
         """
         The trie has at least the root node.
         The root node does not store any character
         """
+        self.__initialize_root()
+
+    def __initialize_root(self):
         self.root = TrieNode("")
 
     def insert(self, word):
         """Insert a word into the trie"""
+        word = self.sanitize_input(word)
+
+        # loop through each character in the word and add/update the node respectively
         node = self.root
 
-        # Loop through each character in the word
-        # Check if there is no child containing the character, create a new child for the current node
         for char in word:
-            if char in node.children:
-                node = node.children[char]
-            else:
-                # If a character is not found,
-                # create a new node in the trie
-                new_node = TrieNode(char)
-                node.children[char] = new_node
-                node = new_node
+            node = node.add_child(char)
 
-        # Mark the end of a word
-        node.is_end = True
+    def sanitize_input(self, word):
+        # make sure word is represented as list
+        word = [x for x in word]
 
-        # Increment the counter to indicate that we see this word once more
-        node.counter += 1
+        # make sure eos symbol is not used as segment
+        if eos_symbol in word[:-1]:
+            print(f"WARNING: Reserved symbol '{eos_symbol}' (End-Of-Sequence) used as segment, will be ignored...")
+            word = list(filter(lambda segment: segment != eos_symbol, word))
+
+        # append eos symbol to end of sequence
+        if word[-1] != eos_symbol:
+            word.append(eos_symbol)
+
+        return word
 
     def insert_all(self, words):
         for w in words:
@@ -42,11 +52,11 @@ class Trie(object):
             - prefix: the current prefix, for tracing a
                 word while traversing the trie
         """
-        if node.is_end:
-            self.output.append((prefix + node.char, node.counter))
+        if node.char == eos_symbol:
+            self.output.append((prefix, node.counter))
 
         for child in node.children.values():
-            self.dfs(child, prefix + node.char)
+            self.dfs(child, prefix + [node.char])
 
     def query(self, x):
         """Given an input (a prefix), retrieve all words stored in
@@ -63,7 +73,7 @@ class Trie(object):
             if char in node.children:
                 node = node.children[char]
             else:
-                # cannot found the prefix, return empty list
+                # cannot find the prefix, return empty list
                 return []
 
         # Traverse the trie to get all candidates
@@ -74,15 +84,13 @@ class Trie(object):
 
     def get_successor_values(self, word):
         node = self.root
-        sv_per_segment = [] # populate with pairs of segment and SV
+        sv_per_segment = []  # populate with pairs of segment and SV
 
         for segment in word:
             node = node.children.get(segment)
             if not node:
                 break  # populate remaining SVs with 0
             sv = len(node.children)
-            if node.is_end:
-                sv += 1
             sv_per_segment.append((segment, sv))
 
         while len(sv_per_segment) < len(word):
@@ -101,16 +109,26 @@ class TrieNode:
         # the character stored in this node
         self.char = char
 
-        # whether this can be the end of a word
-        self.is_end = False
-
-        # a counter indicating how many times a word is inserted
-        # (if this node's is_end is True)
+        # a counter indicating by how many entries the node is matched
         self.counter = 0
 
         # a dictionary of child nodes
         # keys are characters, values are nodes
         self.children = {}
+
+    def add_child(self, char):
+        if char in self.children:
+            child_node = self.children[char]
+        else:
+            child_node = type(self)(char)
+            self.children[char] = child_node
+
+        self.counter += 1
+
+        if char == eos_symbol:
+            child_node.counter += 1  # update counter for leaf nodes, since they are never traversed
+
+        return child_node
 
 
 if __name__ == "__main__":
@@ -120,13 +138,15 @@ if __name__ == "__main__":
         ["b", "l", "a"],
         ["b", "l", "i"],
         ["b", "l", "u", "b"],
-        ["b", "l", "ei"]
+        ["b", "l", "ei"],
+        ["b", "l"],
+        ["b", "l"]
     ]
 
     for w in words:
         t.insert(w)
 
     # inserting words as lists works, querying only works as strings
-    print(t.query("bl"))
+    print(t.query(["b", "l"]))
 
     print(t.get_successor_values(["b", "l", "ei"]))

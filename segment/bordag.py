@@ -11,3 +11,10 @@ REFINED
 3. refine trie classification by the means of certain restrictions
 
 """
+
+
+class BordagSegmenter(object):
+    def __init__(self, forms):
+        self.forms = forms
+
+
