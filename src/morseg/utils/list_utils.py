@@ -54,8 +54,8 @@ def remove_and_insert_placeholder(full_list: list, partial_list: list, placehold
     :param placeholder: a user-defined placeholder to replace the sublist
     :return: the modified list, if replacement was successful; None otherwise.
     """
-    if full_list is None or partial_list is None:
-        return None
+    if not full_list or not partial_list or placeholder is None:
+        return full_list
 
     start_index = get_start_idx_for_sublist(full_list, partial_list)
     end_index = start_index + len(partial_list)
@@ -64,7 +64,7 @@ def remove_and_insert_placeholder(full_list: list, partial_list: list, placehold
         modified_list = full_list[:start_index] + [placeholder] + full_list[end_index:]
         return modified_list
 
-    return None
+    return full_list
 
 
 def insert_and_remove_placeholder(full_list: list, partial_list: list, placeholder):
@@ -95,6 +95,9 @@ def remove_repeating_symbols(l, symbol):
     if l is None:
         return None
 
+    if symbol is None:
+        return l
+
     modified_list = []
 
     for i, x in enumerate(l):
@@ -102,12 +105,3 @@ def remove_repeating_symbols(l, symbol):
             modified_list.append(x)
 
     return modified_list
-
-
-if __name__ == "__main__":
-    l = ["a", "b", "+", "c", "+", "+", "+", "+"]
-    clean_list = remove_repeating_symbols(l, "+")
-
-    print(clean_list)
-
-    print(list_contains_sublist(clean_list, "ab"))

@@ -1,4 +1,4 @@
-from trie import Trie, TrieNode
+from .trie import Trie, TrieNode
 
 
 class PCT(Trie):

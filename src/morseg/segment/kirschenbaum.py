@@ -47,7 +47,7 @@ class KirschenbaumMorphemeSegmenter(Segmenter):
         applicable_patterns = []
         for pattern in self.scores.keys():
             if list_contains_sublist(word, pattern):
-                applicable_patterns.append(pattern)
+                applicable_patterns.append(pattern.split(" "))
 
         return applicable_patterns
 

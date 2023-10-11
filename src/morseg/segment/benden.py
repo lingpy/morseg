@@ -1,6 +1,5 @@
 import math
 from morseg.datastruct.trie import Trie
-from morseg.utils.cldf_utils import get_segments_by_language
 from segmenter import *
 
 
@@ -111,7 +110,7 @@ class BendenMorphemeSegmenter(Segmenter):
 
         for n, i in enumerate(boundary_indices):
             # n is the number of boundaries that has already been added to the word, has to be added to the original target index
-            word.insert(n+i+1, BOUNDARY_SYMBOL)
+            word.insert(n+i+1, self.BOUNDARY_SYMBOL)
 
         return word
 
@@ -121,6 +120,10 @@ def format_result_string(result):
 
 
 if __name__ == "__main__":
+    # TODO replace by tests and get rid of direct pycldf usage
+    # (use German.tsv test file instead and open it directly with LingPy)
+
+    """
     segments_by_language = get_segments_by_language()
     test_segments = [segments_by_language["german"]]
 
@@ -135,5 +138,6 @@ if __name__ == "__main__":
             print(format_result_string(segmenter.find_boundaries(word, segmenter.alg2)))
             print(format_result_string(segmenter.find_boundaries(word, segmenter.alg3)))
             print("\n\n")
+    """
 
 
