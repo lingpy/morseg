@@ -1,4 +1,6 @@
-eos_symbol = "#"  # symbol to be used to indicate the end of a sequence
+from random import shuffle
+
+EOS_SYMBOL = "#"  # symbol to be used to indicate the end of a sequence
 
 
 class Trie(object):
@@ -17,6 +19,9 @@ class Trie(object):
 
     def insert(self, word):
         """Insert a word into the trie"""
+        if not word:
+            return
+
         word = self.sanitize_input(word)
 
         # loop through each character in the word and add/update the node respectively
@@ -30,19 +35,35 @@ class Trie(object):
         word = [x for x in word]
 
         # make sure eos symbol is not used as segment
-        if eos_symbol in word[:-1]:
-            print(f"WARNING: Reserved symbol '{eos_symbol}' (End-Of-Sequence) used as segment, will be ignored...")
-            word = list(filter(lambda segment: segment != eos_symbol, word))
+        if EOS_SYMBOL in word[:-1]:
+            print(f"WARNING: Reserved symbol '{EOS_SYMBOL}' (End-Of-Sequence) used as segment, will be ignored...")
+            word = list(filter(lambda segment: segment != EOS_SYMBOL, word))
 
         # append eos symbol to end of sequence
-        if word[-1] != eos_symbol:
-            word.append(eos_symbol)
+        if word[-1] != EOS_SYMBOL:
+            word.append(EOS_SYMBOL)
 
         return word
 
     def insert_all(self, words):
+        if not words:
+            return
+
         for w in words:
             self.insert(w)
+
+    def collect_nodes_preorder(self, node=None):
+        if node is None:
+            node = self.root
+
+        node_list = [node]
+
+        sorted_child_keys = list(sorted(node.children.keys()))
+
+        for child_key in sorted_child_keys:
+            node_list.extend(self.collect_nodes_preorder(node.children[child_key]))
+
+        return node_list
 
     def dfs(self, node, prefix):
         """Depth-first traversal of the trie
@@ -52,11 +73,14 @@ class Trie(object):
             - prefix: the current prefix, for tracing a
                 word while traversing the trie
         """
-        if node.char == eos_symbol:
+        if node.char == EOS_SYMBOL:
             self.output.append((prefix, node.counter))
 
         for child in node.children.values():
-            self.dfs(child, prefix + [node.char])
+            if node == self.root:
+                self.dfs(child, [])
+            else:
+                self.dfs(child, prefix + [node.char])
 
     def query(self, x):
         """Given an input (a prefix), retrieve all words stored in
@@ -101,6 +125,22 @@ class Trie(object):
 
         return sv_per_segment
 
+    def __eq__(self, other):
+        if not isinstance(other, Trie):
+            return False
+
+        nodes = self.collect_nodes_preorder()
+        other_nodes = other.collect_nodes_preorder()
+
+        if len(nodes) != len(other_nodes):
+            return False
+
+        for node, other_node in zip(nodes, other_nodes):
+            if node != other_node:
+                return False
+
+        return True
+
 
 class TrieNode:
     """A node in the trie structure"""
@@ -125,15 +165,21 @@ class TrieNode:
 
         self.counter += 1
 
-        if char == eos_symbol:
+        if char == EOS_SYMBOL:
             child_node.counter += 1  # update counter for leaf nodes, since they are never traversed
 
         return child_node
 
+    def __eq__(self, other):
+        if not isinstance(other, TrieNode):
+            return False
+
+        return (self.char == other.char and self.counter == other.counter
+                and self.children.keys() == other.children.keys())
+
 
 if __name__ == "__main__":
     t = Trie()
-
     words = [
         ["b", "l", "a"],
         ["b", "l", "i"],
@@ -150,3 +196,4 @@ if __name__ == "__main__":
     print(t.query(["b", "l"]))
 
     print(t.get_successor_values(["b", "l", "ei"]))
+

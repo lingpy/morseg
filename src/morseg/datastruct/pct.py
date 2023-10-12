@@ -1,4 +1,4 @@
-from .trie import Trie, TrieNode
+from morseg.datastruct.trie import Trie, TrieNode
 
 
 class PCT(Trie):
@@ -54,23 +54,29 @@ class PCTNode(TrieNode):
 
         # important distinction between None (virtual root) and empty string (no affix)!
         if affix is not None:
-            self.affixes = {char: affix}
+            self.affix_counts = {affix: 1}
         else:
-            self.affixes = {}
+            self.affix_counts = {}
 
     def add_child(self, char, affix=None):
         child_node = super().add_child(char)
 
         if affix is not None:
-            if affix in self.affixes:
-                self.affixes[affix] += 1
+            if affix in self.affix_counts:
+                self.affix_counts[affix] += 1
             else:
-                self.affixes[affix] = 1
+                self.affix_counts[affix] = 1
 
         return child_node
 
     def get_probability_distribution(self):
-        return {affix: (count / self.counter) for affix, count in self.affixes.items()}
+        return {affix: (count / self.counter) for affix, count in self.affix_counts.items()}
+
+    def __eq__(self, other):
+        if not isinstance(other, PCTNode):
+            return False
+
+        return super().__eq__(other) and self.affix_counts == other.affix_counts
 
 
 if __name__ == "__main__":
