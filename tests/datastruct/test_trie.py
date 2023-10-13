@@ -28,7 +28,7 @@ def test_init(trie):
 
 
 def test_insert(trie):
-    word = ["t", "e", "s", "t", "#"]
+    word = ["t", "e", "s", "t", EOS_SYMBOL]
     trie.insert(word)
 
     # check if root node is set up correctly
@@ -59,6 +59,15 @@ def test_insert(trie):
         else:
             assert len(node.children) == 1
         i += 1
+
+    # check whether protected symbols are handled correctly
+    word2 = ["t", "e", "s", "t"]
+    trie2 = Trie()
+    trie2.insert(word2)
+    word3 = ["t", "e", EOS_SYMBOL, EOS_SYMBOL, "s", "t", EOS_SYMBOL]
+    trie3 = Trie()
+    trie3.insert(word3)
+    assert trie == trie2 == trie3
 
 
 def test_insert_all(trie, words):
@@ -162,6 +171,9 @@ def test_query(trie, words):
     print(words)
     assert all(x in words for x in returned_forms)
 
+    # should return an empty list if prefix is not found in the trie
+    assert trie.query(["a"]) == []
+
     # add a word for the second time, count should be updated
     word = ["b", "o", "g", "u", "s"]
     trie.insert(word)
@@ -172,4 +184,41 @@ def test_query(trie, words):
 
 
 def test_get_successor_values(trie, words):
-    pass
+    trie.insert_all(words)
+
+    # check if successor values are populated correctly for existing word
+    expected_result = [("b", 2), ("i", 2), ("n", 1), ("g", 2), ("o", 1)]
+    assert expected_result == trie.get_successor_values(["b", "i", "n", "g", "o"])
+
+    # check if successor values are populated correctly for partly matching word
+    expected_result = [("b", 2), ("o", 1), ("n", 0), ("g", 0), ("o", 0)]
+    assert expected_result == trie.get_successor_values(["b", "o", "n", "g", "o"])
+
+    # check if successor values are populated correctly for words that do not match at all
+    expected_result = [("d", 0), ("o", 0), ("n", 0), ("g", 0), ("o", 0)]
+    assert expected_result == trie.get_successor_values(["d", "o", "n", "g", "o"])
+
+
+def test_node_equals():
+    node = TrieNode("")
+    other_node = TrieNode("")
+
+    # empty nodes should be equal
+    assert node == other_node
+
+    # update content of one node
+    node.add_child("a")
+    assert node != other_node
+
+    # update content of other node
+    other_node.add_child("a")
+    assert node == other_node
+
+    # equality check should also account for the counter
+    node.add_child("a")
+    assert node != other_node
+
+    # check if comparison is stable against other object types
+    assert node != ""
+    assert node != 2
+    assert node != Trie()

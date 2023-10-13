@@ -1,6 +1,6 @@
 from morseg.utils.list_utils import (list_contains_sublist, get_start_idx_for_sublist,
                                      remove_repeating_symbols, remove_and_insert_placeholder,
-                                     insert_and_remove_placeholder)
+                                     insert_and_remove_placeholder, reverse_list)
 
 import pytest
 
@@ -163,3 +163,9 @@ def test_remove_and_insert_placeholder():
     assert remove_and_insert_placeholder(full_list, sublist, 0) == full_list
     sublist = ["a", "b", "z"]
     assert remove_and_insert_placeholder(full_list, sublist, 0) == full_list
+
+
+def test_reverse_list():
+    assert reverse_list(["a", "b", "c"]) == ["c", "b", "a"]
+    assert reverse_list([]) == []
+    assert reverse_list(None) is None

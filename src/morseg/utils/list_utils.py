@@ -105,3 +105,10 @@ def remove_repeating_symbols(l, symbol):
             modified_list.append(x)
 
     return modified_list
+
+
+def reverse_list(l):
+    if not l:
+        return l
+
+    return [l[i] for i in range(len(l) - 1, -1, -1)]

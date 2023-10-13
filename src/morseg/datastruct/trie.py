@@ -126,7 +126,7 @@ class Trie(object):
         return sv_per_segment
 
     def __eq__(self, other):
-        if not isinstance(other, Trie):
+        if not isinstance(other, type(self)):
             return False
 
         nodes = self.collect_nodes_preorder()
@@ -176,24 +176,3 @@ class TrieNode:
 
         return (self.char == other.char and self.counter == other.counter
                 and self.children.keys() == other.children.keys())
-
-
-if __name__ == "__main__":
-    t = Trie()
-    words = [
-        ["b", "l", "a"],
-        ["b", "l", "i"],
-        ["b", "l", "u", "b"],
-        ["b", "l", "ei"],
-        ["b", "l"],
-        ["b", "l"]
-    ]
-
-    for w in words:
-        t.insert(w)
-
-    # inserting words as lists works, querying only works as strings
-    print(t.query(["b", "l"]))
-
-    print(t.get_successor_values(["b", "l", "ei"]))
-
