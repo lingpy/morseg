@@ -1,6 +1,6 @@
 import math
 from morseg.datastruct.trie import Trie
-from segmenter import *
+from .segmenter import *
 
 
 class BendenMorphemeSegmenter(Segmenter):
