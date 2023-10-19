@@ -1,3 +1,6 @@
+from morseg.segment.segmenter import Segmenter
+
+
 """
 Workflow:
 
@@ -13,8 +16,8 @@ REFINED
 """
 
 
-class BordagSegmenter(object):
-    def __init__(self, forms):
-        self.forms = forms
+class BordagSegmenter(Segmenter):
+    def __init__(self, sequences, **kwargs):
+        super().__init__(sequences, **kwargs)
 
 

@@ -3,7 +3,7 @@ import math
 from lingpy.align import Multiple
 from itertools import combinations
 from collections import Counter
-from segmenter import Segmenter
+from morseg.segment.segmenter import Segmenter
 from morseg.utils import *
 
 # TODO the actually harder part here is the pre-selection of the sequence sets
@@ -14,29 +14,29 @@ class KirschenbaumMorphemeSegmenter(Segmenter):
     """
     segments morphemes for given set of sequences, as described in Kirschenbaum (2013).
     """
-    def __init__(self, sequences: list, scoring_scheme=None):
+    def __init__(self, sequences: list, scoring_scheme=None, **kwargs):
         """
         initialize segmenter.
         :param sequences: the sequences to be segmented, represented of threefold-nested list (segments -> words -> clusters)
         :param scoring_scheme: which of the two pattern scoring schemes to use, defaults to Method A
         """
-        super().__init__(sequences)
+        super().__init__(sequences, **kwargs)
         self.scores = {}  # inferred scores for patterns will be stored here (pattern -> list of scores)
         # note: since patterns are represented as lists, which are not hashable, lookup keys are generated
         # by joining the respective list to blank spaces: " ".join(pattern)
 
         for sequence_cluster in sequences:
             scorer = Scorer(sequence_cluster)
-            if scoring_scheme == "B" or scoring_scheme == "B":
+            if scoring_scheme == "B" or scoring_scheme == "b":
                 pattern, score = scorer.method_b()
             else:
                 pattern, score = scorer.method_a()
-            pattern_key = " ".join(pattern)
 
-            if pattern_key in self.scores:
-                self.scores[pattern_key].append(score)
+            # returned pattern is already a hashable string, not a list
+            if pattern in self.scores:
+                self.scores[pattern].append(score)
             else:
-                self.scores[pattern_key] = [score]
+                self.scores[pattern] = [score]
 
     def match(self, word):
         """
@@ -45,9 +45,10 @@ class KirschenbaumMorphemeSegmenter(Segmenter):
         :return: all applicable patterns
         """
         applicable_patterns = []
-        for pattern in self.scores.keys():
+        for pattern_key in self.scores.keys():
+            pattern = pattern_key.split()
             if list_contains_sublist(word, pattern):
-                applicable_patterns.append(pattern.split(" "))
+                applicable_patterns.append(pattern)
 
         return applicable_patterns
 
@@ -75,6 +76,7 @@ class KirschenbaumMorphemeSegmenter(Segmenter):
         for pattern in sorted_patterns:
             while list_contains_sublist(stem, pattern):
                 stem = remove_and_insert_placeholder(stem, pattern, num_applied_patterns)
+                applied_patterns.append(pattern)
 
         # re-insert applied patterns (i.e. detected morphs) with dashes to indicate morpheme boundaries
         segmented_word = stem
@@ -106,21 +108,24 @@ class Scorer(object):
         self.size = len(seqs)
         self.msa = Multiple(seqs)
         self.msa.prog_align()
-        self.patterns = self.find_patterns()
+        self.patterns = self.find_patterns()  # patterns are stored as hashable string representations
         self.pattern_counter = Counter(self.patterns)
 
     def find_patterns(self):
         patterns = []
 
         for al1, al2 in combinations(self.msa.alm_matrix, 2):
-            current_pattern = ""
+            current_pattern = []
             for s1, s2 in zip(al1, al2):
                 if s1 == "-" or s2 == "-" or s1 != s2:
                     if len(current_pattern) > 0:
-                        patterns.append(current_pattern)
-                    current_pattern = ""
+                        patterns.append(get_key_for_pattern(current_pattern))
+                    current_pattern = []
                 else:
-                    current_pattern += s1
+                    current_pattern.append(s1)
+            # make sure patterns that are found at the end of a sequence are also added
+            if len(current_pattern) > 0:
+                patterns.append(get_key_for_pattern(current_pattern))
 
         return patterns
 
@@ -140,7 +145,7 @@ class Scorer(object):
         best_pattern = ""
         best_score = 0.0
 
-        total_count = self.pattern_counter.total()
+        total_count = sum(self.pattern_counter.values())
 
         for pattern in set(self.patterns):
             score = (self.pattern_counter[pattern] / total_count) * math.log(self.size)
@@ -149,13 +154,3 @@ class Scorer(object):
                 best_score = score
 
         return best_pattern, best_score
-
-
-if __name__ == "__main__":
-    # sequences = ['woldemort','waldemar','wladimir','vladymyr']
-    # segmenter = Scorer(sequences)
-
-    list_a = ["a", "b", "c", "d"]
-    list_b = ["b", "c", "d", "e", "f"]
-
-    print(list_contains_sublist(list_a, list_b))

@@ -1,15 +1,14 @@
 import math
 from morseg.datastruct.trie import Trie
-from .segmenter import *
+from morseg.segment.segmenter import *
 
 
 class BendenMorphemeSegmenter(Segmenter):
     """
     A class providing algorithms for morpheme segmentation as described in Benden (2005)
     """
-
-    def __init__(self, sequences):
-        super().__init__(sequences)
+    def __init__(self, sequences, **kwargs):
+        super().__init__(sequences, **kwargs)
         self.tries = []
         self.global_trie = Trie()
 
@@ -22,8 +21,6 @@ class BendenMorphemeSegmenter(Segmenter):
     def alg1(self, word: list, trie: Trie):
         boundary_indices = []
         svs = trie.get_successor_values(word)
-
-        print(svs)
 
         prev_sv = -1
         for i, (_, sv) in enumerate(svs):
@@ -114,30 +111,21 @@ class BendenMorphemeSegmenter(Segmenter):
 
         return word
 
+    def format_result_string(self, result):
+        res = " ".join(result)
 
-def format_result_string(result):
-    return "".join(result).strip("-")
+        # strip leading and trailing boundaries + whitespaces
+        prefix_cutoff_index = 0
+        for i, char in enumerate(res):
+            if char != self.BOUNDARY_SYMBOL and char != " ":
+                prefix_cutoff_index = i
+                break
 
+        suffix_cutoff_index = len(res)
+        for i in range(len(res) - 1, -1, -1):
+            char = res[i]
+            if char != self.BOUNDARY_SYMBOL and char != " ":
+                suffix_cutoff_index = i+1
+                break
 
-if __name__ == "__main__":
-    # TODO replace by tests and get rid of direct pycldf usage
-    # (use German.tsv test file instead and open it directly with LingPy)
-
-    """
-    segments_by_language = get_segments_by_language()
-    test_segments = [segments_by_language["german"]]
-
-    segmenter = BendenMorphemeSegmenter(test_segments)
-
-    # test_word = ["ɡ", "ʁ", "oː", "s", "f", "aː", "t", "ɐ"]
-    # ʃpiːlən
-
-    for cluster in test_segments:
-        for word in cluster:
-            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg1)))
-            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg2)))
-            print(format_result_string(segmenter.find_boundaries(word, segmenter.alg3)))
-            print("\n\n")
-    """
-
-
+        return res[prefix_cutoff_index:suffix_cutoff_index]

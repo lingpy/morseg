@@ -1,6 +1,7 @@
 from random import shuffle
 
 EOS_SYMBOL = "#"  # symbol to be used to indicate the end of a sequence
+BOUNDARY_SYMBOL = "+"
 
 
 class Trie(object):
@@ -30,9 +31,13 @@ class Trie(object):
         for char in word:
             node = node.add_child(char)
 
-    def sanitize_input(self, word):
+    def sanitize_input(self, word, remove_boundaries=True):
         # make sure word is represented as list
         word = [x for x in word]
+
+        # remove boundary symbols, unless specified otherwise
+        if remove_boundaries:
+            word = list(filter(lambda x: x != BOUNDARY_SYMBOL, word))
 
         # make sure eos symbol is not used as segment
         if EOS_SYMBOL in word[:-1]:
