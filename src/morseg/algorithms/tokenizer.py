@@ -4,7 +4,6 @@ Tokenizers are methods that work with pure wordlists.
 import random
 from collections import defaultdict
 
-
 # consider a class for words consisting of tuples
 def seq2tup(word):
     out = []
@@ -127,8 +126,8 @@ class BytePairEncoding(Tokenizer):
     def _train(self, words, iterations=100, threshold=2):
         training_words = []
         for word in words:
-            training_words += [seq2tup(word)]
-
+            training_words += [seq2tup(word.replace(" ", " + "))]
+        self.training_words = training_words
         vocabulary = get_vocabulary(training_words)
         for i in range(iterations):
             pairs = get_stats(vocabulary)
@@ -136,7 +135,6 @@ class BytePairEncoding(Tokenizer):
             if pairs[best_pair] >= threshold:
                 vocabulary = merge_vocabulary(best_pair, vocabulary)
         self.vocabulary = vocabulary
-        # get segments
         self.segments = defaultdict(int)
         self.segmented_words = {}
         for word in self.vocabulary:
