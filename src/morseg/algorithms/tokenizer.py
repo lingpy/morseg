@@ -3,46 +3,41 @@ Tokenizers are methods that work with pure wordlists.
 """
 import random
 from collections import defaultdict
-
-# consider a class for words consisting of tuples
-def seq2tup(word):
-    out = []
-    for segment in word.split(" + "):
-        out += [tuple(segment.split())]
-    return out
-
-def tup2str(tup):
-    return " + ".join([" ".join(elm) for elm in tup])
+from linse.typedsequence import Word
 
 # check if entry contains a segment, fast method with strings
 def contains(a, b):
-    return tup2str(b) in tup2str(a)
+    return str(b) in str(a)
 
 
 # add this to util class later
 def merge_pair(word, pair):
-    out = [word[0]]
-    for i in range(1, len(word)):
-        seg1, seg2 = word[i - 1], word[i]
-        if seg1 == pair[0] and seg2 == pair[1]:
-            out[-1] += seg2
+    out = Word(word.morphemes[0])
+    for i in range(1, len(word.morphemes)):
+        seg1, seg2 = word.morphemes[i - 1], word.morphemes[i]
+        if seg1 == pair.morphemes[0] and seg2 == pair.morphemes[1]:
+            out.append(seg2)
         else:
-            out += [seg2]
-    return out
+            out.extend(seg2)
+    return out #Word(str(out))
 
 
 def get_vocabulary(words):
     vocabulary = defaultdict(int)
     for word in words:
-        vocabulary[tuple(word)] += 1
+        vocabulary[word] += 1
     return vocabulary
 
 
 def get_stats(vocabulary):
     pairs = defaultdict(int)
     for word, freq in vocabulary.items():
-        for i in range(len(word) - 1):
-            pairs[word[i], word[i + 1]] += freq
+        for i in range(len(word.morphemes) - 1):
+            pair = Word(word.morphemes[i])
+            pair.extend(word.morphemes[i + 1])
+            pairs[Word(
+                str(word.morphemes[i] + " + " + str(word.morphemes[i + 1])))
+                ] += freq
     return pairs
 
 
@@ -51,9 +46,9 @@ def merge_vocabulary(pair, vocabulary):
     for word, freq in vocabulary.items():
         if contains(word, pair):
             new_word = merge_pair(word, pair)
-            out[tuple(new_word)] += 1
+            out[new_word] += 1
         else:
-            out[tuple(word)] += 1
+            out[word] += 1
     return out
 
 
@@ -124,11 +119,7 @@ class BytePairEncoding(Tokenizer):
         Tokenizer.__init__(self)
     
     def _train(self, words, iterations=100, threshold=2):
-        training_words = []
-        for word in words:
-            training_words += [seq2tup(word.replace(" ", " + "))]
-        self.training_words = training_words
-        vocabulary = get_vocabulary(training_words)
+        vocabulary = get_vocabulary(words)
         for i in range(iterations):
             pairs = get_stats(vocabulary)
             best_pair = max(pairs, key=pairs.get)
@@ -138,12 +129,8 @@ class BytePairEncoding(Tokenizer):
         self.segments = defaultdict(int)
         self.segmented_words = {}
         for word in self.vocabulary:
-            unsegmented = tuple()
-            for morpheme in word:
-                self.segments[morpheme] += 1
-                for char in morpheme:
-                    unsegmented += tuple([char])
-            self.segmented_words[" ".join(unsegmented)] = tup2str(word)
+            unsegmented = Word(" ".join([str(m) for m in word.morphemes]))
+            self.segmented_words[unsegmented] = word
 
     def _tokenize(self, word, **kwargs):
         """
