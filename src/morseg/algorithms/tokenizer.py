@@ -96,19 +96,16 @@ class RandomTokenizer(Tokenizer):
                 0, 
                 int((len(word) - 2) * self.kwargs["morpheme_ratio"] + 0.5))
         break_points = random.sample(idxs[1:-1], break_point_number)
-        out = [tuple([])]
-        for i in range(len(word)):
+        out = Word(word[0])
+        for i in range(1, len(word)):
             if i in break_points:
-                out += [tuple([word[i]])]
+                out.extend(word[i])
             else:
-                out[-1] += tuple([word[i]])
+                out.append(word[i])
         return out
 
 
-
-
-
-class BytePairEncoding(Tokenizer):
+class BytePairTokenizer(Tokenizer):
     """
 
     Notes
