@@ -77,6 +77,8 @@ class PCT(Trie):
         return super().__eq__(other) and self.reverse == other.reverse
 
 
+# TODO make sure node can handle affixes represented as lists!
+# (should not be possible rn since affixes are used as dictionary keys)
 class PCTNode(TrieNode):
     def __init__(self, char):
         super().__init__(char)
@@ -88,6 +90,7 @@ class PCTNode(TrieNode):
         child_node = super().add_child(char)
 
         if affix is not None:
+            affix = " ".join(affix)
             if affix in self.affix_counts:
                 self.affix_counts[affix] += 1
             else:
@@ -95,8 +98,14 @@ class PCTNode(TrieNode):
 
         return child_node
 
-    def get_probability_distribution(self):
+    def calculate_probabilities(self):
+        # normalize counts in order to obtain probabilities
         return {affix: (count / self.counter) for affix, count in self.affix_counts.items()}
+
+    def get_probability_distribution(self):
+        probabilities = self.calculate_probabilities()
+        # sort probabilities in descending order and revert affixes to list representation
+        return [(affix.split(), prob) for affix, prob in sorted(probabilities.items(), key=lambda x: x[1], reverse=True)]
 
     def __eq__(self, other):
         if not isinstance(other, PCTNode):

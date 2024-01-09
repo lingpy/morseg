@@ -7,6 +7,7 @@ class BendenMorphemeSegmenter(Segmenter):
     """
     A class providing algorithms for morpheme segmentation as described in Benden (2005)
     """
+
     def __init__(self, sequences, **kwargs):
         super().__init__(sequences, **kwargs)
         self.tries = []
@@ -37,14 +38,14 @@ class BendenMorphemeSegmenter(Segmenter):
 
         prev_sv = math.inf
         for i, (_, sv) in enumerate(svs):
-            next_sv = svs[i+1][1] if i < len(svs)-1 else 0
+            next_sv = svs[i + 1][1] if i < len(svs) - 1 else 0
             # set a morpheme boundary after the first segment of a local maximum
             # (segment where no immediate neighbor has a higher SV)
             if sv > prev_sv and sv >= next_sv:
                 # handling of plateaus
                 j = 1
                 while sv == next_sv:
-                    next_sv = svs[i+j][1] if j < len(word) - i else math.inf
+                    next_sv = svs[i + j][1] if j < len(word) - i else math.inf
                     j += 1
                 if sv > next_sv:
                     boundary_indices.append(i)
@@ -69,16 +70,16 @@ class BendenMorphemeSegmenter(Segmenter):
         # iterate backwards through the word to make sure that the boundary is set at the last position of
         # a local maximum (thus the first one the loop arrives at)
         next_sv = math.inf
-        for i in range(len(word)-1, 0, -1):
+        for i in range(len(word) - 1, 0, -1):
             position, sv = svs[i]
-            prev_sv = svs[i-1][1]
+            prev_sv = svs[i - 1][1]
             # set a morpheme boundary after the last segment of a local maximum
             # (segment where no immediate neighbor has a higher SV)
             if sv > next_sv and sv >= prev_sv:
                 # handling of plateaus
                 j = 1
                 while sv == prev_sv:
-                    prev_sv = svs[i-j][1] if j < i else math.inf
+                    prev_sv = svs[i - j][1] if j < i else math.inf
                     j += 1
                 if sv > prev_sv:
                     boundary_indices.insert(0, i)
@@ -93,8 +94,13 @@ class BendenMorphemeSegmenter(Segmenter):
 
         return self.global_trie
 
-    def find_boundaries(self, word, algorithm):
-        trie = self.get_trie_for_word(word)
+    def find_boundaries(self, word, algorithm=None, trie: Trie = None):
+        if not trie:
+            trie = self.get_trie_for_word(word)
+
+        # TODO should probably add proper validation of the algorithm parameter here.
+        if not algorithm:
+            algorithm = self.alg1
 
         boundary_indices = algorithm(word, trie)
 
@@ -107,9 +113,21 @@ class BendenMorphemeSegmenter(Segmenter):
 
         for n, i in enumerate(boundary_indices):
             # n is the number of boundaries that has already been added to the word, has to be added to the original target index
-            word.insert(n+i+1, self.BOUNDARY_SYMBOL)
+            word.insert(n + i + 1, self.BOUNDARY_SYMBOL)
 
         return word
+
+    def segment_all(self, algorithm=None):
+        segmented_words = []
+
+        for i, cluster in enumerate(self.sequences):
+            segmented_words_in_cluster = []
+            relevant_trie = self.tries[i]
+            for word in cluster:
+                segmented_words_in_cluster.append(self.find_boundaries(word, trie=relevant_trie, algorithm=algorithm))
+            segmented_words.append(segmented_words_in_cluster)
+
+        return segmented_words
 
     def format_result_string(self, result):
         res = " ".join(result)
@@ -125,7 +143,7 @@ class BendenMorphemeSegmenter(Segmenter):
         for i in range(len(res) - 1, -1, -1):
             char = res[i]
             if char != self.BOUNDARY_SYMBOL and char != " ":
-                suffix_cutoff_index = i+1
+                suffix_cutoff_index = i + 1
                 break
 
         return res[prefix_cutoff_index:suffix_cutoff_index]
