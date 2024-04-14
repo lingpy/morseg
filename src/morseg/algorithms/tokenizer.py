@@ -12,14 +12,14 @@ def contains(a, b):
 
 # add this to util class later
 def merge_pair(word, pair):
-    out = Word(word.morphemes[0])
-    for i in range(1, len(word.morphemes)):
-        seg1, seg2 = word.morphemes[i - 1], word.morphemes[i]
-        if seg1 == pair.morphemes[0] and seg2 == pair.morphemes[1]:
-            out.append(seg2)
+    out = Word.from_string(str(word[0]))
+    for i in range(1, len(word)):
+        seg1, seg2 = word[i - 1], word[i]
+        if str(seg1) == str(pair[0]) and str(seg2) == str(pair[1]):
+            out[-1].extend(seg2)
         else:
-            out.extend(seg2)
-    return out #Word(str(out))
+            out.append(seg2)
+    return out
 
 
 def get_vocabulary(words):
@@ -32,11 +32,11 @@ def get_vocabulary(words):
 def get_stats(vocabulary):
     pairs = defaultdict(int)
     for word, freq in vocabulary.items():
-        for i in range(len(word.morphemes) - 1):
-            pair = Word(word.morphemes[i])
-            pair.extend(word.morphemes[i + 1])
-            pairs[Word(
-                str(word.morphemes[i] + " + " + str(word.morphemes[i + 1])))
+        for i in range(len(word) - 1):
+            pair = Word.from_string(str(word[i]))
+            pair.append(word[i + 1])
+            pairs[Word.from_string(
+                str(word[i]) + " + " + str(word[i + 1]))
                 ] += freq
     return pairs
 
@@ -129,7 +129,7 @@ class BytePairEncoding(Tokenizer):
         self.segments = defaultdict(int)
         self.segmented_words = {}
         for word in self.vocabulary:
-            unsegmented = Word(" ".join([str(m) for m in word.morphemes]))
+            unsegmented = Word.from_string(" ".join([str(m) for m in word]))
             self.segmented_words[unsegmented] = word
 
     def _tokenize(self, word, **kwargs):
