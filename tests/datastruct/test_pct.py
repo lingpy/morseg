@@ -18,11 +18,11 @@ def suffix_pct():
 @pytest.fixture
 def prefix_words():
     words = [
-        ("pretty", ""),
-        ("prefix", "pre"),
+        ("pretty", []),
+        ("prefix", ["p", "r", "e"]),
         ("fix", ""),
-        ("infix", "in"),
-        ("preface", "pre")
+        ("infix", ["i", "n"]),
+        ("preface", ["p", "r", "e"])
     ]
 
     return words
@@ -32,10 +32,10 @@ def prefix_words():
 def suffix_words():
     words = [
         ("clear", ""),
-        ("clearly", "ly"),
-        ("dearly", "ly"),
+        ("clearly", ["l", "y"]),
+        ("dearly", ["l", "y"]),
         ("early", ""),
-        ("machinery", "ry")
+        ("machinery", ["r", "y"])
     ]
 
     return words
@@ -187,11 +187,9 @@ def test_get_affix_probabilities(suffix_pct, suffix_words):
     suffix_pct.insert_all(suffix_words)
     prob_distribution = suffix_pct.get_affix_probabilities(["e", "a", "s", "i", "l", "y"])
     assert len(prob_distribution) == 2
-    assert prob_distribution.get("ly") == 2/3
-    assert prob_distribution.get("") == 1/3
+    assert prob_distribution == [(["l", "y"], 2/3), ([], 1/3)]
 
     prob_distribution = suffix_pct.get_affix_probabilities(["w", "e", "e", "k"])
     assert len(prob_distribution) == 3
-    assert prob_distribution.get("ly") == 0.4
-    assert prob_distribution.get("") == 0.4
-    assert prob_distribution.get("ry") == 0.2
+    assert (prob_distribution == [(["l", "y"], 0.4), ([], 0.4), (["r", "y"], 0.2)] or
+            prob_distribution == [([], 0.4), (["l", "y"], 0.4), (["r", "y"], 0.2)])
