@@ -1,3 +1,3 @@
-# morseg: A package for automatic morpheme segmentation
+# Morpheme Segmentation in Multi- and Monolingual Wordlists 
 
-The ```morseg``` package provides Python implementations for several morpheme segmentation algorithms that have been proposed in the literature.
+This package provides implementations for several algorithms by which words in a wordlist can be segmented into morphemes. 
