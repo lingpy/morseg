@@ -191,3 +191,100 @@ class PairEncoding(Tokenizer):
             return self.segmented_words[word]
         return word
 
+
+class WordPiece(Tokenizer):
+    def _train(self, words: List[Word], iterations=100, threshold=0, wp_prefix="##"):
+        # FIXME this sort of preprocessing will not be necessary once the wrapper classes are set up
+        alphabet = defaultdict(int)
+
+        vocabulary = []
+        for w in words:
+            new_word = []
+            for morpheme in w:
+                new_word += list(morpheme)
+            nw = Word(new_word)
+            for i, morpheme in enumerate(nw):
+                if i != 0:
+                    morpheme.insert(0, wp_prefix)
+                alphabet[morpheme] += 1
+            vocabulary += [nw]
+
+        for _ in range(iterations):
+            # count bigram frequencies
+            bigram_freq = defaultdict(int)
+            for w in vocabulary:
+                for i in range(len(w) - 1):
+                    s1 = w[i]
+                    s2 = w[i+1]
+                    bigram_freq[(s1, s2)] += 1
+
+            # get pair with best score
+            best_score = 0.0
+            best_pair = None
+            best_pair_freq = 0
+
+            for pair, freq in bigram_freq.items():
+                s1, s2 = pair
+                score = freq / (alphabet[s1] * alphabet[s2])
+                if score > best_score:
+                    best_score = score
+                    best_pair = pair
+                    best_pair_freq = freq
+
+            # stop merging if no score exceeds the threshold, or if there is nothing left to merge
+            if best_score < threshold or not best_pair:
+                break
+
+            # update alphabet frequencies
+            best_first, best_second = best_pair
+            alphabet[best_first] -= best_pair_freq
+            alphabet[best_second] -= best_pair_freq
+
+            # remove special prefix from second part, add merged pair to the alphabet
+            stripped_second = best_second.copy()
+            stripped_second.remove(wp_prefix)
+            alphabet[best_first + stripped_second] = best_pair_freq
+
+            # update vocabulary
+            for i, word in enumerate(vocabulary):
+                new_word = []
+                j = 0
+                while j < len(word):
+                    s1 = word[j]
+                    s2 = word[j+1] if j+1 < len(word) else None
+                    if s1 == best_first and s2 == best_second:
+                        if s2[0] == wp_prefix:
+                            s2 = s2[1:]
+                        merged = s1 + s2
+                        new_word.append(merged)
+                        j += 2
+                    else:
+                        new_word.append(s1)
+                        j += 1
+                # overwrite word in vocabulary
+                vocabulary[i] = Word(new_word)
+
+        # remove special prefix token from vocabulary
+        for w in vocabulary:
+            for m in w:
+                if wp_prefix in m:
+                    m.remove(wp_prefix)
+
+        # store segmented words for retrieval
+        self.segmented_words = {k: v for k, v in zip(words, vocabulary)}
+
+    def _tokenize(self, word: Word, **kwargs) -> Word:
+        """
+        Tokenize words into units.
+
+        Note
+        ----
+        The current strategy just looks up the word in the dictionary, but on
+        the long run, we should change strategies for unknown words.
+
+        An additional strategy could be to use orthoprofiles to split words by
+        the identified segments.
+        """
+        if word in self.segmented_words:
+            return self.segmented_words[word]
+        return word
