@@ -1,4 +1,4 @@
-from morseg.algorithms.tokenizer import BytePairEncoding
+from morseg.algorithms.tokenizer import PairEncoding
 from morseg.algorithms.tokenizer import *
 from linse.typedsequence import Word
 
@@ -36,13 +36,13 @@ def merge_pair(word, pair):
             out.extend(seg2)
     return out
 
-x = merge_pair(Word("a + b + c"), Word("a + b"))
-print(x)
+# x = merge_pair(Word("a + b + c"), Word("a + b"))
+# print(x)
 #
 base = ["alle", "jahre", "wieder", "alles", "neu", "macht", "der", "mai", "fallen"]
 words = [Word(" + ".join(list(x))) for x in base]
 
-bpe = BytePairEncoding()
+bpe = PairEncoding()
 
 bpe.train(words, iterations=100)
 

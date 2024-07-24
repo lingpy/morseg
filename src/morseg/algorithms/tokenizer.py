@@ -1,10 +1,12 @@
 """
 Tokenizers are methods that work with pure wordlists.
 """
+import morfessor
 from typing import List
 import random
 from collections import defaultdict
 from linse.typedsequence import Word
+from morseg.utils.wrappers import WordWrapper, WordlistWrapper
 
 
 def transfer_segmentation(
@@ -77,18 +79,25 @@ class Tokenizer:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
-    def _train(self, words, **kwargs):
+    def _preprocess(self, words: WordlistWrapper):
+        self.training_data = self.forms = words.copy()
+
+    def _train(self, **kwargs):
+        pass
+
+    def _postprocess(self):
         pass
 
     def train(
             self, 
-            words: List[Word], 
+            words: WordlistWrapper,
             **kwargs):
-        self.training_data = words
-        self._train(self.training_data, **kwargs)
+        self._preprocess(words)
+        self._train(**kwargs)
+        self._postprocess()
     
     def _tokenize(self, word, **kwargs):
-        return word
+        return self.forms[word]
 
     def __call__(self, word: Word, **kwargs) -> Word:
         return self._tokenize(word, **kwargs)
@@ -100,6 +109,10 @@ class Tokenizer:
             ):
         for word in words:
             yield self(word, **kwargs)
+
+    def get_segmentations(self):
+        for form in self.forms:
+            yield form
 
 
 class RandomTokenizer(Tokenizer):
@@ -144,23 +157,28 @@ class PairEncoding(Tokenizer):
     """
     def __init__(self):
         Tokenizer.__init__(self)
-    
-    def _train(
-            self, 
-            words: List[Word], 
-            iterations=100, 
-            threshold=3
-            ):
+
+    def _preprocess(self, words):
+        self.forms = words
+
         # needs to segment all words into individual "morphemes" as a
         # preprocessing step
-        self.words = words
         segmented_words = []
-        for w in words:
+        for w in words.unsegmented():
             new_word = []
             for morpheme in w:
                 new_word += list(morpheme)
             nw = Word(new_word)
             segmented_words += [Word(new_word)]
+
+        self.training_data = segmented_words
+    
+    def _train(
+            self,
+            iterations=60,
+            threshold=3
+            ):
+        segmented_words = self.training_data
         
         vocabulary = get_vocabulary(segmented_words)
         for i in range(iterations):
@@ -193,26 +211,22 @@ class PairEncoding(Tokenizer):
 
 
 class WordPiece(Tokenizer):
-    def _train(self, words: List[Word], iterations=100, threshold=0, wp_prefix="##"):
-        # FIXME this sort of preprocessing will not be necessary once the wrapper classes are set up
+    def _preprocess(self, words: WordlistWrapper, wp_prefix="##"):
+        self.training_data = self.forms = words
+        self.training_data.split_everywhere()
+        self.training_data.add_wp_token(wp_token=wp_prefix)
+
+    def _train(self, iterations=60, threshold=0, wp_prefix="##"):
         alphabet = defaultdict(int)
 
-        vocabulary = []
-        for w in words:
-            new_word = []
-            for morpheme in w:
-                new_word += list(morpheme)
-            nw = Word(new_word)
-            for i, morpheme in enumerate(nw):
-                if i != 0:
-                    morpheme.insert(0, wp_prefix)
-                alphabet[morpheme] += 1
-            vocabulary += [nw]
+        for w in self.training_data:
+            for m in w:
+                alphabet[m] += 1
 
         for _ in range(iterations):
             # count bigram frequencies
             bigram_freq = defaultdict(int)
-            for w in vocabulary:
+            for w in self.training_data:
                 for i in range(len(w) - 1):
                     s1 = w[i]
                     s2 = w[i+1]
@@ -245,46 +259,29 @@ class WordPiece(Tokenizer):
             stripped_second.remove(wp_prefix)
             alphabet[best_first + stripped_second] = best_pair_freq
 
-            # update vocabulary
-            for i, word in enumerate(vocabulary):
-                new_word = []
-                j = 0
-                while j < len(word):
-                    s1 = word[j]
-                    s2 = word[j+1] if j+1 < len(word) else None
-                    if s1 == best_first and s2 == best_second:
-                        if s2[0] == wp_prefix:
-                            s2 = s2[1:]
-                        merged = s1 + s2
-                        new_word.append(merged)
-                        j += 2
-                    else:
-                        new_word.append(s1)
-                        j += 1
-                # overwrite word in vocabulary
-                vocabulary[i] = Word(new_word)
+            self.training_data.merge(best_first, best_second, wp_token=wp_prefix)
 
         # remove special prefix token from vocabulary
-        for w in vocabulary:
-            for m in w:
-                if wp_prefix in m:
-                    m.remove(wp_prefix)
+        self.training_data.remove_wp_token(wp_token=wp_prefix)
 
         # store segmented words for retrieval
-        self.segmented_words = {k: v for k, v in zip(words, vocabulary)}
+        # self.segmented_words = {k: v for k, v in zip(self.forms, self.training_data)}
 
-    def _tokenize(self, word: Word, **kwargs) -> Word:
+
+class Morfessor(Tokenizer):
+    def _preprocess(self, words: WordlistWrapper):
+        self.forms = words.copy()
+        self.training_data = [(1, tuple(m[0])) for m in words.unsegmented()]
+
+    def _train(self, **kwargs):
+        self.model = morfessor.BaselineModel()
+        self.model.load_data(self.training_data)
+        self.model.train_batch(**kwargs)
+
+    def _postprocess(self):
         """
-        Tokenize words into units.
-
-        Note
-        ----
-        The current strategy just looks up the word in the dictionary, but on
-        the long run, we should change strategies for unknown words.
-
-        An additional strategy could be to use orthoprofiles to split words by
-        the identified segments.
+        Store segmentations from Morfessor in own model.
         """
-        if word in self.segmented_words:
-            return self.segmented_words[word]
-        return word
+        for f in self.forms:
+            res = self.model.segment(tuple(f.unsegmented[0]))
+            f.update(res)

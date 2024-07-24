@@ -1,6 +1,6 @@
 import csv
 from linse.typedsequence import Word
-from morseg.algorithms.tokenizer import WordPiece
+from morseg.algorithms.tokenizer import WordPiece, PairEncoding
 
 
 def get_unsegmented_word(wf):
@@ -20,3 +20,11 @@ wp.train(words, iterations=60)
 
 for w in words:
     print(wp(w))
+
+print("\n" + 100 * "=" + "\n")
+
+bpe = PairEncoding()
+bpe.train(words, iterations=60)
+
+for w in words:
+    print(bpe(w))

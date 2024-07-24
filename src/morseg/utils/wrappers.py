@@ -1,0 +1,227 @@
+from csv import DictReader
+from linse.typedsequence import Word, Morpheme
+
+
+class WordWrapper(Word):
+    def __init__(self, tokens):
+        if type(tokens) is WordWrapper:
+            self.gold_segmented = tokens.gold_segmented
+            self.unsegmented = tokens.unsegmented
+            super().__init__(tokens)
+        else:
+            self.gold_segmented = Word(tokens)
+            self.unsegmented = Word(sum(self.gold_segmented))
+            self.num_tokens = len(self.unsegmented[0])
+            super().__init__(sum(self.gold_segmented))
+
+    def copy(self):
+        return WordWrapper(self)
+
+    def update(self, other):
+        super().__init__(other)
+
+    def split(self, index):
+        """
+        adds a morpheme boundary at given index.
+        :param index: index to add the morpheme boundary
+        :param wp_token: the special token for the WordPiece algorithm
+        """
+
+        # TODO add error/warning when index is out of bounds?
+
+        if self.has_split_at(index):
+            return
+
+        i = 0
+        for j, morpheme in enumerate(self):
+            for k in range(len(morpheme)):
+                if i == index:
+                    left, right = morpheme[:k], morpheme[k:]
+                    self.pop(j)
+                    self.insert(j, right)
+                    self.insert(j, left)
+                i += 1
+
+    def has_split_at(self, index):
+        counter = 0
+        for i, m in enumerate(self):
+            counter += len(m)
+            if counter == index and i != (len(self) - 1):
+                return True
+
+        return False
+
+    def merge(self, left, right, wp_token=None):
+        i = 0
+        while i < (len(self) - 1):
+            m1 = self[i]
+            m2 = self[i + 1]
+            if m1 == left and m2 == right:
+                if wp_token and wp_token in m2:
+                    m2 = Morpheme(m2)  # copy object to avoid manipulation of underlying data
+                    m2.remove(wp_token)
+                self.pop(i)  # remove left
+                self.pop(i)  # remove right
+                self.insert(i, m1 + m2)
+            i += 1
+
+    def remove_split(self, index):
+        if not self.has_split_at(index):
+            return
+
+        counter = 0
+        for i in range(len(self) - 1):
+            left = self[i]
+            right = self[i + 1]
+            counter += len(left)
+            if counter == index:
+                self.pop(i)  # remove left
+                self.pop(i)  # remove right
+                self.insert(i, left + right)
+                break
+
+    def split_everywhere(self):
+        """
+        Insert a morpheme boundary between all tokens.
+        Preprocessing method used by bottom-up joining models like BPE or WordPiece.
+        """
+        for i in range(1, self.num_tokens):
+            self.split(i)
+
+    def add_wp_token(self, wp_token="##"):
+        for i in range(1, len(self)):
+            self[i].insert(0, wp_token)
+
+    def remove_wp_token(self, wp_token="##"):
+        for i in range(1, len(self)):
+            if wp_token in self[i]:
+                self[i].remove(wp_token)
+
+    def f1_score(self):
+        pass
+
+    def __eq__(self, other):
+        if type(other) is not WordWrapper:
+            return False
+
+        return super().__eq__(other) and self.gold_segmented == other.gold_segmented
+
+
+class WordlistWrapper(list):
+    def __init__(self, forms):
+        """
+        Wraps forms into WordWrapper objects. Forms are expected to be already sanitized (not containing slash notation,
+            gap symbols, etc.)
+        :param forms: the forms of the wordlist as a list of either strings or iterable segments.
+        """
+        if not all(type(f) is WordWrapper for f in forms):
+            forms = [WordWrapper(f) for f in forms]
+        self.form_dict = {f.unsegmented: f for f in forms}
+        super().__init__(forms)
+
+    def copy(self):
+        return WordlistWrapper([word.copy() for word in self])
+
+    def __getitem__(self, item):
+        if type(item) is Word:
+            return self.form_dict.get(item)
+
+        return super().__getitem__(item)
+
+    def unsegmented(self):
+        for form in self:
+            yield form.unsegmented
+
+    def gold_segmented(self):
+        for form in self:
+            yield form.gold_segmented
+
+    def merge(self, left, right, wp_token=None):
+        for x in self:
+            x.merge(left, right, wp_token=wp_token)
+
+    def split_everywhere(self):
+        for x in self:
+            x.split_everywhere()
+
+    def add_wp_token(self, wp_token="##"):
+        for x in self:
+            x.add_wp_token(wp_token=wp_token)
+
+    def remove_wp_token(self, wp_token="##"):
+        for x in self:
+            x.remove_wp_token(wp_token=wp_token)
+
+    @classmethod
+    def from_file(cls, fp, col_name="TOKENS", delimiter="\t"):
+        forms = []
+
+        with open(fp) as f:
+            reader = DictReader(f, delimiter=delimiter)
+            for line in reader:
+                forms.append(line[col_name])
+
+        forms = cls.preprocess(forms)
+
+        return cls(forms)
+
+    @classmethod
+    def preprocess(cls, forms, morpheme_separator=Word.item_separator):
+        preprocessed_forms = []
+
+        for f in forms:
+            # each form is a string segmented by whitespaces, such as 'a b + c'
+            word = []
+            morphemes = f.split(morpheme_separator)
+            for m in morphemes:
+                m = m.split()
+                # resolve slash notation: only take part left of the slash, ignore if it is a gap symbol
+                m = [seg.split("/")[0] for seg in m if seg.split("/")[0] != "-"]
+                word.append(m)
+            preprocessed_forms.append(word)
+
+        return preprocessed_forms
+
+
+if __name__ == "__main__":
+    ################################
+    # ad hoc testing - WordWrapper #
+    ################################
+
+    w = WordWrapper([["a", "b", "c"], ["a"], ["b"]])
+    for i in range(1, len(w[0])):
+        w.split(i)
+        print(w)
+    w.merge(Morpheme(["a"]), Morpheme(["b"]))
+    print(w)
+    print(w.has_split_at(0))  # False
+    print(w.has_split_at(2))  # True
+    print(w.has_split_at(4))  # False
+    print(w.has_split_at(5))  # False
+
+    ####################################
+    # ad hoc testing - WordlistWrapper #
+    ####################################
+
+    wl = w = WordlistWrapper(
+        [
+            [["a", "b", "c"], ["a"], ["b"]],
+            [["d", "e"], ["g"]]
+        ]
+    )
+
+    for x in wl:
+        print(x)
+
+    for x in wl.gold_segmented():
+        print(x)
+
+    wl[0].split(1)
+    wl[0].split(2)
+    wl[0].split(3)
+    wl[0].split(4)
+
+    print(wl[0])
+
+    wl.merge(Morpheme(["a"]), Morpheme(["b"]))
+    print(wl[0])

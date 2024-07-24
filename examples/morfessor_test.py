@@ -25,3 +25,8 @@ model.train_batch()
 for s in model.get_segmentations():
     morphemes = [" ".join(x) for x in s[2]]
     print(" + ".join(morphemes))
+
+test_word = "z ɛ ç ts eː n"
+test_word = tuple(test_word.split())
+
+print(model.segment(test_word))
