@@ -4,9 +4,7 @@ from morseg.utils.wrappers import WordlistWrapper
 
 wl = WordlistWrapper.from_file("german.tsv")
 
-models = [WordPiece, Morfessor, PairEncoding]
-
-# TODO inspect PairEncoding
+models = [PairEncoding, WordPiece, Morfessor]
 
 for model in models:
     model = model()

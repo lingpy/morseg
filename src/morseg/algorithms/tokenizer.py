@@ -4,74 +4,8 @@ Tokenizers are methods that work with pure wordlists.
 import morfessor
 from typing import List
 import random
-from collections import defaultdict
 from linse.typedsequence import Word
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
-
-
-def transfer_segmentation(
-        from_word: list, 
-        to_word: list, 
-        from_separators="+",
-        to_separator="+"
-        ) -> list:
-    
-    out = [t for t in to_word]
-    for i, c in enumerate(from_word):
-        if c in from_separators:
-            out.insert(i, to_separator)
-    return out
-
-
-# check if entry contains a segment, fast method with strings
-def contains(a, b):
-    return str(b) in str(a)
-
-
-def get_word(form):
-    return Word([x.split() for x in form.split(" + ")])
-
-
-# add this to util class later
-def merge_pair(word, pair):
-    out = get_word(str(word[0]))
-    for i in range(1, len(word)):
-        seg1, seg2 = word[i - 1], word[i]
-        if str(seg1) == str(pair[0]) and str(seg2) == str(pair[1]):
-            out[-1].extend(seg2)
-        else:
-            out.append(seg2)
-    return out
-
-
-def get_vocabulary(words):
-    vocabulary = defaultdict(int)
-    for word in words:
-        vocabulary[word] += 1
-    return vocabulary
-
-
-def get_stats(vocabulary):
-    pairs = defaultdict(int)
-    for word, freq in vocabulary.items():
-        for i in range(len(word) - 1):
-            pair = Word.from_string(str(word[i]))
-            pair.append(word[i + 1])
-            pairs[get_word(
-                str(word[i]) + " + " + str(word[i + 1]))
-                ] += freq
-    return pairs
-
-
-def merge_vocabulary(pair, vocabulary):
-    out = defaultdict(int)
-    for word, freq in vocabulary.items():
-        if contains(word, pair):
-            new_word = merge_pair(word, pair)
-            out[new_word] += 1
-        else:
-            out[word] += 1
-    return out
 
 
 class Tokenizer:
@@ -159,55 +93,21 @@ class PairEncoding(Tokenizer):
         Tokenizer.__init__(self)
 
     def _preprocess(self, words):
-        self.forms = words
-
-        # needs to segment all words into individual "morphemes" as a
-        # preprocessing step
-        segmented_words = []
-        for w in words.unsegmented():
-            new_word = []
-            for morpheme in w:
-                new_word += list(morpheme)
-            nw = Word(new_word)
-            segmented_words += [Word(new_word)]
-
-        self.training_data = segmented_words
+        self.training_data = self.forms = words
+        self.training_data.split_everywhere()
     
     def _train(
             self,
             iterations=60,
             threshold=3
             ):
-        segmented_words = self.training_data
-        
-        vocabulary = get_vocabulary(segmented_words)
-        for i in range(iterations):
-            pairs = get_stats(vocabulary)
+        # merge most frequent bigram
+        for _ in range(iterations):
+            pairs = self.training_data.bigram_counts()
             best_pair = max(pairs, key=pairs.get)
-            if pairs[best_pair] >= threshold:
-                vocabulary = merge_vocabulary(best_pair, vocabulary)
-        self.vocabulary = vocabulary
-        self.segments = defaultdict(int)
-        self.segmented_words = {}
-        for word in self.vocabulary:
-            unsegmented = Word.from_string(" ".join([str(m) for m in word]))
-            self.segmented_words[unsegmented] = word
-
-    def _tokenize(self, word: Word, **kwargs) -> Word:
-        """
-        Tokenize words into units.
-
-        Note
-        ----
-        The current strategy just looks up the word in the dictionary, but on
-        the long run, we should change strategies for unknown words.
-        
-        An additional strategy could be to use orthoprofiles to split words by
-        the identified segments.
-        """
-        if word in self.segmented_words:
-            return self.segmented_words[word]
-        return word
+            if pairs[best_pair] < threshold:
+                break
+            self.training_data.merge(*best_pair)
 
 
 class WordPiece(Tokenizer):
@@ -217,20 +117,11 @@ class WordPiece(Tokenizer):
         self.training_data.add_wp_token(wp_token=wp_prefix)
 
     def _train(self, iterations=60, threshold=0, wp_prefix="##"):
-        alphabet = defaultdict(int)
-
-        for w in self.training_data:
-            for m in w:
-                alphabet[m] += 1
+        alphabet = self.training_data.unigram_counts()
 
         for _ in range(iterations):
             # count bigram frequencies
-            bigram_freq = defaultdict(int)
-            for w in self.training_data:
-                for i in range(len(w) - 1):
-                    s1 = w[i]
-                    s2 = w[i+1]
-                    bigram_freq[(s1, s2)] += 1
+            bigram_freq = self.training_data.bigram_counts()
 
             # get pair with best score
             best_score = 0.0
@@ -263,9 +154,6 @@ class WordPiece(Tokenizer):
 
         # remove special prefix token from vocabulary
         self.training_data.remove_wp_token(wp_token=wp_prefix)
-
-        # store segmented words for retrieval
-        # self.segmented_words = {k: v for k, v in zip(self.forms, self.training_data)}
 
 
 class Morfessor(Tokenizer):

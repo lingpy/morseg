@@ -1,3 +1,4 @@
+from collections import defaultdict
 from csv import DictReader
 from linse.typedsequence import Word, Morpheme
 
@@ -151,6 +152,23 @@ class WordlistWrapper(list):
     def remove_wp_token(self, wp_token="##"):
         for x in self:
             x.remove_wp_token(wp_token=wp_token)
+
+    def unigram_counts(self):
+        vocabulary = defaultdict(int)
+        for form in self:
+            for m in form:
+                vocabulary[m] += 1
+
+        return vocabulary
+
+    def bigram_counts(self):
+        vocabulary = defaultdict(int)
+        for form in self:
+            for i in range(len(form) - 1):
+                pair = (form[i], form[i+1])
+                vocabulary[pair] += 1
+
+        return vocabulary
 
     @classmethod
     def from_file(cls, fp, col_name="TOKENS", delimiter="\t"):
