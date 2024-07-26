@@ -1,11 +1,15 @@
 """
 Tokenizers are methods that work with pure wordlists.
 """
-import morfessor
 from typing import List
 import random
 from linse.typedsequence import Word
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
+
+try:
+    import morfessor
+except ImportError:
+    morfessor = False
 
 
 class Tokenizer:
@@ -162,6 +166,8 @@ class Morfessor(Tokenizer):
         self.training_data = [(1, tuple(m[0])) for m in words.unsegmented()]
 
     def _train(self, **kwargs):
+        if not morfessor:
+            raise ValueError("You must install the morfessor software package")
         self.model = morfessor.BaselineModel()
         self.model.load_data(self.training_data)
         self.model.train_batch(**kwargs)
