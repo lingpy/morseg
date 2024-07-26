@@ -162,12 +162,12 @@ class WordPiece(Tokenizer):
 
 class Morfessor(Tokenizer):
     def _preprocess(self, words: WordlistWrapper):
+        if not morfessor:
+            raise ValueError("You must install the morfessor software package")
         self.forms = words.copy()
         self.training_data = [(1, tuple(m[0])) for m in words.unsegmented()]
 
     def _train(self, **kwargs):
-        if not morfessor:
-            raise ValueError("You must install the morfessor software package")
         self.model = morfessor.BaselineModel()
         self.model.load_data(self.training_data)
         self.model.train_batch(**kwargs)
