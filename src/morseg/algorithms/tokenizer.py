@@ -3,12 +3,18 @@ Tokenizers are methods that work with pure wordlists.
 """
 import math
 
-import morfessor
 from typing import List
 import random
 from linse.typedsequence import Word
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
 from morseg.datastruct import Trie
+
+import collections
+
+try:
+    import morfessor
+except ImportError:
+    morfessor = False
 
 
 class Tokenizer:
@@ -163,8 +169,53 @@ class WordPiece(Tokenizer):
         self.training_data.remove_wp_token(wp_token=wp_prefix)
 
 
+class LetterSuccessorVariety(Tokenizer):
+
+    def _preprocess(self):
+        self.training_data = self.forms
+
+    def _train(self):
+        self.sv = collections.defaultdict(lambda : collections.defaultdict(int))
+        for word in self.training_data:
+            for morpheme in word:
+                for sound_a, sound_b in zip(["^"] + morpheme, morpheme + ["$"]):
+                    self.sv[sound_a][sound_b] += 1
+
+    def profile(self, word, threshold=1):
+        """
+        Makes a profile and determines break points.
+
+        The profile is used to break words.
+        """
+        out = []
+        for morpheme in word:
+            output = []
+            profile = []
+            for sound_a, sound_b in zip(morpheme[:-1], morpheme[1:]):
+                profile += [self.sv[sound_a][sound_b]]
+            # determine peaks (i < j) as our break points
+            break_points = [0]
+            for idx, (i, j) in enumerate(zip(profile[:-1], profile[1:])):
+                if j - i >= threshold:
+                    break_points += [idx + 1]
+            break_points += [len(morpheme)]
+            out += [(profile, break_points)]
+        return out
+
+    def __call__(self, word: Word, threshold=1):
+        break_points = self.profile(word, threshold=threshold)
+        out = []
+        for morpheme, (_, bp) in zip(word, break_points):
+            for (i, j) in zip(bp[:-1], bp[1:]):
+                out += [morpheme[i:j]]
+        return Word(out)
+
+
+
 class Morfessor(Tokenizer):
     def _preprocess(self):
+        if not morfessor:
+            raise ValueError("You must install the morfessor software package")
         self.training_data = [(1, tuple(m[0])) for m in self.forms.unsegmented()]
 
     def _train(self, **kwargs):
