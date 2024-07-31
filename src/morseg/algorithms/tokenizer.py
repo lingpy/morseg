@@ -1,11 +1,14 @@
 """
 Tokenizers are methods that work with pure wordlists.
 """
+import math
+
 import morfessor
 from typing import List
 import random
 from linse.typedsequence import Word
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
+from morseg.datastruct import Trie
 
 
 class Tokenizer:
@@ -13,8 +16,11 @@ class Tokenizer:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
-    def _preprocess(self, words: WordlistWrapper):
-        self.training_data = self.forms = words.copy()
+    def _copy_forms(self, words: WordlistWrapper):
+        self.forms = words.copy()
+
+    def _preprocess(self):
+        self.training_data = self.forms
 
     def _train(self, **kwargs):
         pass
@@ -26,7 +32,8 @@ class Tokenizer:
             self, 
             words: WordlistWrapper,
             **kwargs):
-        self._preprocess(words)
+        self._copy_forms(words)
+        self._preprocess()
         self._train(**kwargs)
         self._postprocess()
     
@@ -92,8 +99,8 @@ class PairEncoding(Tokenizer):
     def __init__(self):
         Tokenizer.__init__(self)
 
-    def _preprocess(self, words):
-        self.training_data = self.forms = words
+    def _preprocess(self):
+        self.training_data = self.forms
         self.training_data.split_everywhere()
     
     def _train(
@@ -111,8 +118,8 @@ class PairEncoding(Tokenizer):
 
 
 class WordPiece(Tokenizer):
-    def _preprocess(self, words: WordlistWrapper, wp_prefix="##"):
-        self.training_data = self.forms = words
+    def _preprocess(self, wp_prefix="##"):
+        self.training_data = self.forms
         self.training_data.split_everywhere()
         self.training_data.add_wp_token(wp_token=wp_prefix)
 
@@ -157,9 +164,8 @@ class WordPiece(Tokenizer):
 
 
 class Morfessor(Tokenizer):
-    def _preprocess(self, words: WordlistWrapper):
-        self.forms = words.copy()
-        self.training_data = [(1, tuple(m[0])) for m in words.unsegmented()]
+    def _preprocess(self):
+        self.training_data = [(1, tuple(m[0])) for m in self.forms.unsegmented()]
 
     def _train(self, **kwargs):
         self.model = morfessor.BaselineModel()
@@ -173,3 +179,144 @@ class Morfessor(Tokenizer):
         for f in self.forms:
             res = self.model.segment(tuple(f.unsegmented[0]))
             f.update(res)
+
+
+class LSVTokenizer(Tokenizer):
+    # the possible values for each parameter.
+    # the first value doubles as default option.
+    param_options = {
+        "method": ["type", "token", "entropy", "max_drop", "normalized"],
+        "strategy": ["peak", "rise", "threshold"],
+        "direction": ["forward", "backward", "both"]
+    }
+
+    def __init__(self, **kwargs):
+        self.params = {}
+
+        for param, values in self.param_options.items():
+            if param in kwargs:
+                if kwargs[param] in values:
+                    self.params[param] = kwargs[param]
+                else:
+                    raise ValueError(f"Invalid value for argument {param}: '{kwargs[param]}'")
+            else:
+                self.params[param] = values[0]
+
+        if self.params["strategy"] == "threshold":
+            if "threshold" in kwargs:
+                self.params["threshold"] = kwargs["threshold"]
+            else:
+                raise ValueError("A threshold is required for the threshold segmentation strategy.")
+
+        super().__init__(**kwargs)
+
+    def _preprocess(self):
+        # TODO support for backward or bidirectional tries
+        self.training_data = Trie(self.forms)
+
+    def _calculate_type_variety(self, token_variety: list):
+        return [len(x) for x in token_variety]
+
+    def _calculate_token_variety(self, token_variety: list):
+        return token_variety
+
+    def _calculate_successor_entropy(self, token_variety: list):
+        entropies = []
+
+        for varieties in token_variety:
+            entropy = 0.0
+            sum_varieties = sum(varieties)
+            for v in varieties:
+                p = v / sum_varieties
+                entropy -= p * math.log2(p)
+            entropies.append(entropy)
+
+        return entropies
+
+    def _calculate_successor_max_drop(self, token_variety: list):
+        pass
+
+    def _calculate_norm_lsv(self, token_variety: list):
+        pass
+
+    def _train(self, **kwargs):
+        # cache segmentations with specified parameters
+        self.token_varieties = {word.unsegmented: self.training_data.get_token_variety(word) for word in self.forms}
+
+        var_func_mapping = {
+            "type": self._calculate_type_variety,
+            "token": self._calculate_token_variety,
+            "entropy": self._calculate_successor_entropy,
+            "max_drop": self._calculate_successor_max_drop,
+            "normalized": self._calculate_norm_lsv
+        }
+
+        # get the corresponding function to calculate variety values
+        var_func = var_func_mapping.get(self.params["method"], self._calculate_type_variety)
+
+        # calculate variety values for each word
+        self.varieties = {}
+        for word, token_var in self.token_varieties.items():
+            self.varieties[word] = var_func(token_var)
+
+    def _get_splits_at_peak(self, varieties):
+        """
+        Peak and plateau segmentation strategy, as formalized by Hafer and Weiss (1974).
+        Splits a word at index i iff the varieties[i] >= varieties[i+1] and varieties[i] >= varieties[i-1].
+        Does not introduce splits if LSV == 1 for type frequency.
+        """
+        splits = []
+
+        var_threshold = 1 if self.params["method"] == "type" else 0
+
+        for i in range(1, len(varieties)-1):
+            if varieties[i] > var_threshold and varieties[i] >= varieties[i-1] and varieties[i] >= varieties[i+1]:
+                splits.append(i)
+
+        return splits
+
+    def _get_splits_at_rise(self, varieties):
+        """
+        Benden (2005)'s **First Algorithm**.
+        Introduces a split wherever the variety value is higher than its immediate predecessor.
+        """
+        splits = []
+
+        for i in range(1, len(varieties)):
+            if varieties[i] > varieties[i-1]:
+                splits.append(i)
+
+        return splits
+
+    def _get_splits_by_threshold(self, varieties):
+        splits = []
+
+        for i, variety in enumerate(varieties):
+            if variety > self.params["threshold"]:
+                splits.append(i)
+
+        return splits
+
+    def _postprocess(self):
+        split_func_mapping = {
+            "peak": self._get_splits_at_peak,
+            "rise": self._get_splits_at_rise,
+            "threshold": self._get_splits_by_threshold
+        }
+
+        split_func = split_func_mapping.get(self.params["strategy"], self._get_splits_at_peak)
+
+        for word, varieties in self.varieties.items():
+            splits = split_func(varieties)
+            for i in splits:
+                self.forms[word].split(i)
+
+    def _tokenize(self, word, **kwargs):
+        if (kwargs.get("method", self.params["method"]) == self.params["method"] and
+                kwargs.get("strategy", self.params["strategy"]) == self.params["strategy"]):
+            return super()._tokenize(word)  # returns the cached segmentation
+        else:
+            # TODO calculate segmentation on the fly based on the passed parameters
+            pass
+
+

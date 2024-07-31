@@ -9,10 +9,10 @@ class PCT(Trie):
     """
     def __init__(self, reverse=False):
         super().__init__()
-        self.__initialize_root()
+        self._initialize_root()
         self.reverse = reverse
 
-    def __initialize_root(self):
+    def _initialize_root(self):
         self.root = PCTNode("")
 
     def insert(self, word, affix=None):
@@ -20,7 +20,7 @@ class PCT(Trie):
         if self.reverse:
             word = reverse_list(word)
 
-        word = self.sanitize_input(word)
+        word = self.preprocess_word(word)
 
         # loop through each character in the word and add/update the node respectively
         node = self.root

@@ -4,7 +4,7 @@ from morseg.utils.wrappers import WordlistWrapper
 
 wl = WordlistWrapper.from_file("german.tsv")
 
-models = [PairEncoding, WordPiece, Morfessor]
+models = [LSVTokenizer, PairEncoding, WordPiece, Morfessor]
 
 for model in models:
     model = model()

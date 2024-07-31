@@ -8,6 +8,7 @@ class WordWrapper(Word):
         if type(tokens) is WordWrapper:
             self.gold_segmented = tokens.gold_segmented
             self.unsegmented = tokens.unsegmented
+            self.num_tokens = len(self.unsegmented[0])
             super().__init__(tokens)
         else:
             self.gold_segmented = Word(tokens)

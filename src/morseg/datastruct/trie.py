@@ -1,29 +1,34 @@
-from random import shuffle
-
-EOS_SYMBOL = "#"  # symbol to be used to indicate the end of a sequence
-BOUNDARY_SYMBOL = "+"
+from morseg.utils.wrappers import WordlistWrapper, WordWrapper
+from linse.typedsequence import Morpheme
 
 
 class Trie(object):
     """The trie object"""
     # TODO maybe represent Trie as Compact Trie for improved efficiency.
+    EOS_SYMBOL = "#"  # symbol to be used to indicate the end of a sequence
 
-    def __init__(self):
+    def __init__(self, words: WordlistWrapper = None, eos_symbol=None):
         """
         The trie has at least the root node.
         The root node does not store any character
         """
-        self.__initialize_root()
+        self._initialize_root()
 
-    def __initialize_root(self):
+        if eos_symbol:
+            self.EOS_SYMBOL = eos_symbol
+
+        if words:
+            self.insert_all(words)
+
+    def _initialize_root(self):
         self.root = TrieNode("")
 
-    def insert(self, word):
+    def insert(self, word: WordWrapper):
         """Insert a word into the trie"""
         if not word:
             return
 
-        word = self.sanitize_input(word)
+        word = self.preprocess_word(word)
 
         # loop through each character in the word and add/update the node respectively
         node = self.root
@@ -31,22 +36,16 @@ class Trie(object):
         for char in word:
             node = node.add_child(char)
 
-    def sanitize_input(self, word, remove_boundaries=True):
-        # make sure word is represented as list
-        word = [x for x in word]
+    def preprocess_word(self, word, remove_boundaries=True):
+        if type(word) is not WordWrapper:
+            raise TypeError()
 
-        # remove boundary symbols, unless specified otherwise
-        if remove_boundaries:
-            word = list(filter(lambda x: x != BOUNDARY_SYMBOL, word))
-
-        # make sure eos symbol is not used as segment
-        if EOS_SYMBOL in word[:-1]:
-            print(f"WARNING: Reserved symbol '{EOS_SYMBOL}' (End-Of-Sequence) used as segment, will be ignored...")
-            word = list(filter(lambda segment: segment != EOS_SYMBOL, word))
+        # get a copy of the unsegmented "single morpheme" word
+        word = Morpheme(word.unsegmented[0])
 
         # append eos symbol to end of sequence
-        if word[-1] != EOS_SYMBOL:
-            word.append(EOS_SYMBOL)
+        if word[-1] != self.EOS_SYMBOL:
+            word.append(self.EOS_SYMBOL)
 
         return word
 
@@ -70,7 +69,7 @@ class Trie(object):
 
         return node_list
 
-    def dfs(self, node, prefix):
+    def dfs(self, node, prefix, output):
         """Depth-first traversal of the trie
 
         Args:
@@ -78,14 +77,14 @@ class Trie(object):
             - prefix: the current prefix, for tracing a
                 word while traversing the trie
         """
-        if node.char == EOS_SYMBOL:
-            self.output.append((prefix, node.counter))
+        if node.char == self.EOS_SYMBOL:
+            output.append((prefix, node.counter))
 
         for child in node.children.values():
             if node == self.root:
-                self.dfs(child, [])
+                self.dfs(child, [], output)
             else:
-                self.dfs(child, prefix + [node.char])
+                self.dfs(child, prefix + [node.char], output)
 
     def query(self, x):
         """Given an input (a prefix), retrieve all words stored in
@@ -94,7 +93,7 @@ class Trie(object):
         """
         # Use a variable within the class to keep all possible outputs
         # As there can be more than one word with such prefix
-        self.output = []
+        output = []
         node = self.root
 
         # Check if the prefix is in the trie
@@ -106,10 +105,10 @@ class Trie(object):
                 return []
 
         # Traverse the trie to get all candidates
-        self.dfs(node, x[:-1])
+        self.dfs(node, x[:-1], output)
 
         # Sort the results in reverse order and return
-        return sorted(self.output, key=lambda x: x[1], reverse=True)
+        return sorted(output, key=lambda x: x[1], reverse=True)
 
     def get_successor_values(self, word):
         node = self.root
@@ -130,6 +129,28 @@ class Trie(object):
 
         return sv_per_segment
 
+    def get_token_variety(self, word: WordWrapper):
+        word = word.unsegmented[0]
+        node = self.root
+        variety_per_segment = []
+
+        for segment in word:
+            variety = []
+            for child in node.children.values():
+                variety.append(child.counter)
+
+            variety_per_segment.append(variety)
+
+            node = node.children.get(segment)
+            if not node:
+                break
+
+        # pad list with 0 values for unknown suffixes
+        while len(variety_per_segment) < len(word):
+            variety_per_segment.append([0])
+
+        return variety_per_segment
+
     def __eq__(self, other):
         if not isinstance(other, type(self)):
             return False
@@ -149,8 +170,12 @@ class Trie(object):
 
 class TrieNode:
     """A node in the trie structure"""
+    EOS_SYMBOL = Trie.EOS_SYMBOL
 
-    def __init__(self, char):
+    def __init__(self, char, eos_symbol=None):
+        if eos_symbol:
+            self.EOS_SYMBOL = eos_symbol
+
         # the character stored in this node
         self.char = char
 
@@ -170,7 +195,7 @@ class TrieNode:
 
         self.counter += 1
 
-        if char == EOS_SYMBOL:
+        if char == self.EOS_SYMBOL:
             child_node.counter += 1  # update counter for leaf nodes, since they are never traversed
 
         return child_node
