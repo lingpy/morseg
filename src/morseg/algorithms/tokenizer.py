@@ -210,6 +210,10 @@ class LetterSuccessorVariety(Tokenizer):
                 out += [morpheme[i:j]]
         return Word(out)
 
+    def get_segmentations(self):
+        for word in self.forms:
+            yield self(word.unsegmented)
+
 
 class Morfessor(Tokenizer):
     def _preprocess(self):
