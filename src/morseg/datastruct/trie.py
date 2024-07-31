@@ -130,7 +130,7 @@ class Trie(object):
         return sv_per_segment
 
     def get_token_variety(self, word: WordWrapper):
-        word = word.unsegmented[0]
+        word = Morpheme(word.unsegmented[0]) + self.EOS_SYMBOL
         node = self.root
         variety_per_segment = []
 

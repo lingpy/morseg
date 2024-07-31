@@ -239,7 +239,7 @@ class LSVTokenizer(Tokenizer):
     # the possible values for each parameter.
     # the first value doubles as default option.
     param_options = {
-        "method": ["type", "token", "entropy", "max_drop", "normalized"],
+        "method": ["type", "entropy", "max_drop", "normalized"],
         "strategy": ["peak", "rise", "threshold"],
         "direction": ["forward", "backward", "both"]
     }
@@ -271,9 +271,6 @@ class LSVTokenizer(Tokenizer):
     def _calculate_type_variety(self, token_variety: list):
         return [len(x) for x in token_variety]
 
-    def _calculate_token_variety(self, token_variety: list):
-        return token_variety
-
     def _calculate_successor_entropy(self, token_variety: list):
         entropies = []
 
@@ -288,10 +285,40 @@ class LSVTokenizer(Tokenizer):
         return entropies
 
     def _calculate_successor_max_drop(self, token_variety: list):
-        pass
+        return [1 - max(x) / sum(x) for x in token_variety]
+
+    def _calculate_exp_lsv(self):
+        # calculate regular LSV first
+        type_varieties = [[len(x) for x in token_variety] for token_variety in self.token_varieties.values()]
+
+        # sort variety arrays by their length in descending order
+        type_varieties.sort(key=lambda x: len(x), reverse=True)
+
+        self.expected_sv = []
+
+        for i in range(len(type_varieties[0])):
+            num_sv = 0
+            sum_sv = 0
+            for sv in type_varieties:
+                if i >= len(sv):
+                    break
+                num_sv += 1
+                sum_sv += sv[i]
+            self.expected_sv.append(sum_sv / num_sv)
 
     def _calculate_norm_lsv(self, token_variety: list):
-        pass
+        """
+        Normalized LSV as proposed by Çöltekin (2010).
+        """
+        # calculate regular LSV first
+        norm_sv = self._calculate_type_variety(token_variety)
+
+        # TODO check whether this works properly, oversegmentation is suspiciously strong
+
+        for i in range(len(norm_sv)):
+            norm_sv[i] /= self.expected_sv[i]
+
+        return norm_sv
 
     def _train(self, **kwargs):
         # cache segmentations with specified parameters
@@ -299,7 +326,6 @@ class LSVTokenizer(Tokenizer):
 
         var_func_mapping = {
             "type": self._calculate_type_variety,
-            "token": self._calculate_token_variety,
             "entropy": self._calculate_successor_entropy,
             "max_drop": self._calculate_successor_max_drop,
             "normalized": self._calculate_norm_lsv
@@ -307,6 +333,10 @@ class LSVTokenizer(Tokenizer):
 
         # get the corresponding function to calculate variety values
         var_func = var_func_mapping.get(self.params["method"], self._calculate_type_variety)
+
+        # preprocessing step for normalized LSV
+        if self.params["method"] == "normalized":
+            self._calculate_exp_lsv()
 
         # calculate variety values for each word
         self.varieties = {}
