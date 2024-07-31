@@ -211,7 +211,6 @@ class LetterSuccessorVariety(Tokenizer):
         return Word(out)
 
 
-
 class Morfessor(Tokenizer):
     def _preprocess(self):
         if not morfessor:
