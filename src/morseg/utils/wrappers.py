@@ -31,7 +31,7 @@ class WordWrapper(Word):
 
         # TODO add error/warning when index is out of bounds?
 
-        if self.has_split_at(index):
+        if self.has_split_at(index) or index < 1 or index >= self.num_tokens:
             return
 
         i = 0
@@ -52,6 +52,16 @@ class WordWrapper(Word):
                 return True
 
         return False
+
+    def get_splits(self):
+        splits = []
+
+        i = 0
+        for m in self:
+            i += len(m)
+            splits.append(i)
+
+        return splits[:-1]
 
     def merge(self, left, right, wp_token=None):
         i = 0

@@ -5,7 +5,7 @@ import math
 
 from typing import List
 import random
-from linse.typedsequence import Word
+from linse.typedsequence import Word, Morpheme
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
 from morseg.datastruct import Trie
 
@@ -240,8 +240,7 @@ class LSVTokenizer(Tokenizer):
     # the first value doubles as default option.
     param_options = {
         "method": ["type", "entropy", "max_drop", "normalized"],
-        "strategy": ["peak", "rise", "threshold"],
-        "direction": ["forward", "backward", "both"]
+        "strategy": ["peak", "rise", "threshold", "subword"]
     }
 
     def __init__(self, **kwargs):
@@ -265,7 +264,6 @@ class LSVTokenizer(Tokenizer):
         super().__init__(**kwargs)
 
     def _preprocess(self):
-        # TODO support for backward or bidirectional tries
         self.training_data = Trie(self.forms)
 
     def _calculate_type_variety(self, token_variety: list):
@@ -320,9 +318,12 @@ class LSVTokenizer(Tokenizer):
 
         return norm_sv
 
+    def _get_token_varieties(self):
+        return {word.unsegmented: self.training_data.get_token_variety(word) for word in self.forms}
+
     def _train(self, **kwargs):
         # cache segmentations with specified parameters
-        self.token_varieties = {word.unsegmented: self.training_data.get_token_variety(word) for word in self.forms}
+        self.token_varieties = self._get_token_varieties()
 
         var_func_mapping = {
             "type": self._calculate_type_variety,
@@ -351,10 +352,8 @@ class LSVTokenizer(Tokenizer):
         """
         splits = []
 
-        var_threshold = 1 if self.params["method"] == "type" else 0
-
         for i in range(1, len(varieties)-1):
-            if varieties[i] > var_threshold and varieties[i] >= varieties[i-1] and varieties[i] >= varieties[i+1]:
+            if varieties[i] >= varieties[i-1] and varieties[i] >= varieties[i+1]:
                 splits.append(i)
 
         return splits
@@ -381,19 +380,39 @@ class LSVTokenizer(Tokenizer):
 
         return splits
 
-    def _postprocess(self):
+    def _get_splits_by_subword(self, word):
+        subwords = self.training_data.get_subwords(word)
+        return [len(x) for x in subwords]
+
+    def _get_splits(self):
         split_func_mapping = {
             "peak": self._get_splits_at_peak,
             "rise": self._get_splits_at_rise,
-            "threshold": self._get_splits_by_threshold
+            "threshold": self._get_splits_by_threshold,
+            "subword": self._get_splits_by_subword
         }
 
-        split_func = split_func_mapping.get(self.params["strategy"], self._get_splits_at_peak)
+        strategy = self.params["strategy"]
+        split_func = split_func_mapping.get(strategy, self._get_splits_at_peak)
+
+        splits_by_word = {}
 
         for word, varieties in self.varieties.items():
-            splits = split_func(varieties)
+            if strategy == "subword":
+                splits = split_func(word)
+            else:
+                splits = split_func(varieties)
+            splits_by_word[word] = splits
+
+        return splits_by_word
+
+    def _postprocess(self):
+        splits_by_word = self._get_splits()
+
+        for word, splits in splits_by_word.items():
             for i in splits:
-                self.forms[word].split(i)
+                if self.training_data.is_branching(word[0][:i]):
+                    self.forms[word].split(i)
 
     def _tokenize(self, word, **kwargs):
         if (kwargs.get("method", self.params["method"]) == self.params["method"] and
@@ -404,3 +423,50 @@ class LSVTokenizer(Tokenizer):
             pass
 
 
+class LPVTokenizer(LSVTokenizer):
+    def _preprocess(self):
+        self.training_data = Trie(self.forms, reverse=True)
+
+    def _get_token_varieties(self):
+        token_varieties = {}
+
+        for word in self.forms:
+            reversed_word = Morpheme(word.unsegmented[0])
+            reversed_word.reverse()
+            reversed_word = Word(reversed_word)
+            token_varieties[reversed_word] = self.training_data.get_token_variety(word)
+
+        return token_varieties
+
+    def _postprocess(self):
+        splits_by_word = self._get_splits()
+
+        # word is unsegmented (all segments are in one morpheme)
+        for reversed_word, splits in splits_by_word.items():
+            word = Morpheme(reversed_word[0])
+            word.reverse()
+            word_len = len(word)
+            word = Word(word)
+
+            for i in splits:
+                split_idx = word_len - i
+                if self.training_data.is_branching(reversed_word[0][:i]):
+                    self.forms[word].split(split_idx)
+
+
+class LSPVTokenizer(Tokenizer):
+    def __init__(self, lsv: LSVTokenizer = None, lpv: LPVTokenizer = None, **kwargs):
+        self.lsv = lsv or LSVTokenizer(**kwargs)
+        self.lpv = lpv or LPVTokenizer(**kwargs)
+
+        super().__init__(**kwargs)
+
+    def _train(self, **kwargs):
+        self.lsv.train(self.forms)
+        self.lpv.train(self.forms)
+
+    def _postprocess(self):
+        for f in self.forms:
+            splits = self.lsv.forms[f.unsegmented].get_splits() + self.lpv.forms[f.unsegmented].get_splits()
+            for i in splits:
+                f.split(i)

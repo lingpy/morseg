@@ -1,5 +1,5 @@
 from morseg.utils.wrappers import WordlistWrapper, WordWrapper
-from linse.typedsequence import Morpheme
+from linse.typedsequence import Morpheme, Word
 
 
 class Trie(object):
@@ -7,12 +7,13 @@ class Trie(object):
     # TODO maybe represent Trie as Compact Trie for improved efficiency.
     EOS_SYMBOL = "#"  # symbol to be used to indicate the end of a sequence
 
-    def __init__(self, words: WordlistWrapper = None, eos_symbol=None):
+    def __init__(self, words: WordlistWrapper = None, eos_symbol=None, reverse=False):
         """
         The trie has at least the root node.
         The root node does not store any character
         """
         self._initialize_root()
+        self.reverse = reverse
 
         if eos_symbol:
             self.EOS_SYMBOL = eos_symbol
@@ -42,6 +43,10 @@ class Trie(object):
 
         # get a copy of the unsegmented "single morpheme" word
         word = Morpheme(word.unsegmented[0])
+
+        # reverse the word if specified as backward trie
+        if self.reverse:
+            word.reverse()
 
         # append eos symbol to end of sequence
         if word[-1] != self.EOS_SYMBOL:
@@ -130,7 +135,12 @@ class Trie(object):
         return sv_per_segment
 
     def get_token_variety(self, word: WordWrapper):
-        word = Morpheme(word.unsegmented[0]) + self.EOS_SYMBOL
+        word = Morpheme(word.unsegmented[0])
+
+        if self.reverse:
+            word.reverse()
+
+        word += self.EOS_SYMBOL
         node = self.root
         variety_per_segment = []
 
@@ -150,6 +160,33 @@ class Trie(object):
             variety_per_segment.append([0])
 
         return variety_per_segment
+
+    def is_branching(self, prefix: Morpheme):
+        node = self.root
+
+        for s in prefix:
+            node = node.children.get(s)
+            if not node:
+                return False
+
+        return len(node.children) > 1
+
+    def get_subwords(self, word: Word):
+        node = self.root
+        path = []
+        subwords = []
+
+        for m in word:
+            for s in m:
+                node = node.children.get(s)
+                if not node:
+                    break
+
+                path.append(s)
+                if self.EOS_SYMBOL in node.children:
+                    subwords.append(path.copy())
+
+        return subwords
 
     def __eq__(self, other):
         if not isinstance(other, type(self)):

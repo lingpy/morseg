@@ -1,18 +1,30 @@
-from morseg.algorithms.tokenizer import *
+from morseg.algorithms.tokenizer import LSVTokenizer, LPVTokenizer, LSPVTokenizer
 from morseg.utils.wrappers import WordlistWrapper
+import traceback
 
 
 wl = WordlistWrapper.from_file("german.tsv")
 
-for method in LSVTokenizer.param_options["method"]:
-    print(method + "\n")
-    lsv_model = LSVTokenizer(method=method, strategy="rise")
-    try:
-        lsv_model.train(wl)
-        for f in lsv_model.get_segmentations():
-            print(f)
-    except:
-        print("error :(")
+models = [LSPVTokenizer, LSVTokenizer, LPVTokenizer]
 
-    print("\n" + 100 * "=")
+for model in models:
+    print(model.__name__)
+    for method in LSVTokenizer.param_options["method"]:
+        print(method + "\n")
+        lsv_model = model(method=method, strategy="peak")
+        try:
+            lsv_model.train(wl)
+            for f in lsv_model.get_segmentations():
+                print(f)
+        except:
+            traceback.print_exc()
 
+        print("\n" + 100 * "=")
+
+    lsv_model = model(strategy="subword")
+    lsv_model.train(wl)
+    print("subword\n")
+    for f in lsv_model.get_segmentations():
+        print(f)
+
+    print("\n\n" + 100 * "+")
