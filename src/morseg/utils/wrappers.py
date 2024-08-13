@@ -63,6 +63,16 @@ class WordWrapper(Word):
 
         return splits[:-1]
 
+    def get_gold_splits(self):
+        splits = []
+
+        i = 0
+        for m in self.gold_segmented:
+            i += len(m)
+            splits.append(i)
+
+        return splits[:-1]
+
     def merge(self, left, right, wp_token=None):
         i = 0
         while i < (len(self) - 1):
@@ -108,9 +118,6 @@ class WordWrapper(Word):
         for i in range(1, len(self)):
             if wp_token in self[i]:
                 self[i].remove(wp_token)
-
-    def f1_score(self):
-        pass
 
     def __eq__(self, other):
         if type(other) is not WordWrapper:
@@ -181,6 +188,24 @@ class WordlistWrapper(list):
 
         return vocabulary
 
+    def f1_score(self):
+        """
+        Calculate precision, recall and f1 score as defined in Virpioja et al. (2011)
+        """
+        pred_splits = [form.get_splits() for form in self]
+        gold_splits = [form.get_gold_splits() for form in self]
+        correct_splits = [set(pred) & set(gold) for pred, gold in zip(pred_splits, gold_splits)]
+
+        pred_total = sum(len(x) for x in pred_splits)
+        gold_total = sum(len(x) for x in gold_splits)
+        correct_total = sum(len(x) for x in correct_splits)
+
+        precision = correct_total / pred_total if pred_total > 0 else 0.0
+        recall = correct_total / gold_total if gold_total > 0 else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        return f1, precision, recall
+
     @classmethod
     def from_file(cls, fp, col_name="TOKENS", delimiter="\t"):
         forms = []
@@ -188,7 +213,9 @@ class WordlistWrapper(list):
         with open(fp) as f:
             reader = DictReader(f, delimiter=delimiter)
             for line in reader:
-                forms.append(line[col_name])
+                form = line[col_name]
+                if form and form not in forms:
+                    forms.append(form)
 
         forms = cls.preprocess(forms)
 

@@ -1,5 +1,6 @@
 from morseg.utils.wrappers import WordlistWrapper, WordWrapper
-from linse.typedsequence import Morpheme, Word
+from linse.typedsequence import Morpheme, Word, TypedSequence
+from typing import overload
 
 
 class Trie(object):
@@ -91,7 +92,7 @@ class Trie(object):
             else:
                 self.dfs(child, prefix + [node.char], output)
 
-    def query(self, x):
+    def query(self, prefix, freq=False):
         """Given an input (a prefix), retrieve all words stored in
         the trie with that prefix, sort the words by the number of
         times they have been inserted
@@ -99,21 +100,21 @@ class Trie(object):
         # Use a variable within the class to keep all possible outputs
         # As there can be more than one word with such prefix
         output = []
-        node = self.root
+        node = self._get_node(prefix)
 
-        # Check if the prefix is in the trie
-        for char in x:
-            if char in node.children:
-                node = node.children[char]
-            else:
-                # cannot find the prefix, return empty list
-                return []
+        # return an empty list if the prefix is not found in the trie
+        if not node:
+            return []
 
         # Traverse the trie to get all candidates
-        self.dfs(node, x[:-1], output)
+        self.dfs(node, prefix[:-1], output)
 
-        # Sort the results in reverse order and return
-        return sorted(output, key=lambda x: x[1], reverse=True)
+        if freq:
+            # Sort the results in reverse order and return
+            return sorted(output, key=lambda x: x[1], reverse=True)
+
+        # disregard frequencies
+        return [x for x, _ in output]
 
     def get_successor_values(self, word):
         node = self.root
@@ -134,11 +135,17 @@ class Trie(object):
 
         return sv_per_segment
 
-    def get_token_variety(self, word: WordWrapper):
-        word = Morpheme(word.unsegmented[0])
+    @overload
+    def get_token_variety(self, word: WordWrapper): ...
+
+    def get_token_variety(self, word: Morpheme):
+        if isinstance(word, WordWrapper):
+            word = word.unsegmented[0]
+
+        word = Morpheme(word)  # copy object
 
         if self.reverse:
-            word.reverse()
+            word = word[::-1]
 
         word += self.EOS_SYMBOL
         node = self.root
@@ -162,14 +169,36 @@ class Trie(object):
         return variety_per_segment
 
     def is_branching(self, prefix: Morpheme):
+        node = self._get_node(prefix)
+
+        if not node:
+            return False
+
+        return len(node.children) > 1
+
+    def get_count(self, prefix: TypedSequence):
+        """
+        Returns how often a prefix occurs in the underlying wordlist, i.e. how many words start with that prefix.
+        """
+        node = self._get_node(prefix)
+
+        if not node:
+            return 0
+
+        return node.counter
+
+    def _get_node(self, prefix: TypedSequence):
+        if type(prefix) is Word:
+            prefix = sum(prefix)
+
         node = self.root
 
         for s in prefix:
             node = node.children.get(s)
             if not node:
-                return False
+                return None
 
-        return len(node.children) > 1
+        return node
 
     def get_subwords(self, word: Word):
         node = self.root

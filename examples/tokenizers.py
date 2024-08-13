@@ -2,9 +2,9 @@ from morseg.algorithms.tokenizer import *
 from morseg.utils.wrappers import WordlistWrapper
 
 
-wl = WordlistWrapper.from_file("german.tsv")
+wl = WordlistWrapper.from_file("latin-nelex.tsv")
 
-models = [LetterSuccessorVariety, LSVTokenizer, PairEncoding, WordPiece, Morfessor]
+models = [SquareEntropyTokenizer, LSVTokenizer, PairEncoding, WordPiece, Morfessor]
 
 for model in models:
     model = model()
@@ -13,6 +13,10 @@ for model in models:
     print("\n")
 
     model.train(wl)
+
+    f1, precision, recall = model.forms.f1_score()
+    print(f"F1: {f1}, PRECISION: {precision}, RECALL: {recall}\n")
+
     for f in model.get_segmentations():
         print(f)
 

@@ -35,14 +35,14 @@ class Tokenizer:
         pass
 
     def train(
-            self, 
+            self,
             words: WordlistWrapper,
             **kwargs):
         self._copy_forms(words)
         self._preprocess()
         self._train(**kwargs)
         self._postprocess()
-    
+
     def _tokenize(self, word, **kwargs):
         return self.forms[word]
 
@@ -50,10 +50,10 @@ class Tokenizer:
         return self._tokenize(word, **kwargs)
 
     def tokenize(
-            self, 
-            words: List[Word], 
+            self,
+            words: List[Word],
             **kwargs
-            ):
+    ):
         for word in words:
             yield self(word, **kwargs)
 
@@ -83,8 +83,8 @@ class RandomTokenizer(Tokenizer):
             new_word += list(morpheme)
         idxs = list(range(len(new_word)))
         break_point_number = random.randint(
-                0, 
-                int((len(new_word) - 2) * self.kwargs["morpheme_ratio"] + 0.5))
+            0,
+            int((len(new_word) - 2) * self.kwargs["morpheme_ratio"] + 0.5))
         break_points = random.sample(idxs[1:-1], break_point_number)
         out = Word([""])
         for i in range(len(new_word)):
@@ -102,18 +102,19 @@ class PairEncoding(Tokenizer):
     -----
     Code taken with modifications from https://www.geeksforgeeks.org/byte-pair-encoding-bpe-in-nlp/
     """
+
     def __init__(self):
         Tokenizer.__init__(self)
 
     def _preprocess(self):
         self.training_data = self.forms
         self.training_data.split_everywhere()
-    
+
     def _train(
             self,
             iterations=60,
             threshold=3
-            ):
+    ):
         # merge most frequent bigram
         for _ in range(iterations):
             pairs = self.training_data.bigram_counts()
@@ -175,7 +176,7 @@ class LetterSuccessorVariety(Tokenizer):
         self.training_data = self.forms
 
     def _train(self):
-        self.sv = collections.defaultdict(lambda : collections.defaultdict(int))
+        self.sv = collections.defaultdict(lambda: collections.defaultdict(int))
         for word in self.training_data:
             for morpheme in word:
                 for sound_a, sound_b in zip(["^"] + morpheme, morpheme + ["$"]):
@@ -352,8 +353,8 @@ class LSVTokenizer(Tokenizer):
         """
         splits = []
 
-        for i in range(1, len(varieties)-1):
-            if varieties[i] >= varieties[i-1] and varieties[i] >= varieties[i+1]:
+        for i in range(1, len(varieties) - 1):
+            if varieties[i] >= varieties[i - 1] and varieties[i] >= varieties[i + 1]:
                 splits.append(i)
 
         return splits
@@ -366,7 +367,7 @@ class LSVTokenizer(Tokenizer):
         splits = []
 
         for i in range(1, len(varieties)):
-            if varieties[i] > varieties[i-1]:
+            if varieties[i] > varieties[i - 1]:
                 splits.append(i)
 
         return splits
@@ -470,3 +471,153 @@ class LSPVTokenizer(Tokenizer):
             splits = self.lsv.forms[f.unsegmented].get_splits() + self.lpv.forms[f.unsegmented].get_splits()
             for i in splits:
                 f.split(i)
+
+
+class SquareEntropyTokenizer(Tokenizer):
+    """
+    Determines segment boundaries based on the number of squares, economy, and entropy measures (Medina-Urrea 2007).
+    This implementation follows the best segmentation strategy reported in Méndez-Cruz et al. (2016; S13)
+    with an adjustable threshold.
+    """
+
+    def _preprocess(self):
+        # major parts of the method rely on measure about shared prefixes or suffixes;
+        # so storing the forms as tries (in both directions) seems to be the most convenient data structure
+        self.prefix_trie = Trie(self.forms)
+        self.suffix_trie = Trie(self.forms, reverse=True)
+
+        # a dictionary in which all possible splits are stored
+        self.training_data = collections.defaultdict(list)
+
+        for form in self.forms:
+            word = form.unsegmented[0]
+            for i in range(1, len(word)):
+                self.training_data[word].append((word[:i], word[i:]))
+
+        # set up a dictionary in which affixality metrics will be stored
+        self.metrics = collections.defaultdict(lambda: collections.defaultdict(list))
+
+    def _normalize(self, values):
+        return [x / max(values) for x in values] if max(values) > 0 else len(values) * [0.0]
+
+    def _count_squares(self):
+        empty_morpheme = Morpheme()
+
+        for word, splits in self.training_data.items():
+            squares = []
+            for prefix, suffix in splits:
+                num_squares = 0
+                suffix_candidates = [x[len(prefix):] for x in self.prefix_trie.query(prefix)]
+                suffix_candidates.remove(suffix)
+                while empty_morpheme in suffix_candidates:
+                    suffix_candidates.remove(empty_morpheme)
+
+                prefix_candidates = [x[len(suffix):] for x in self.suffix_trie.query(suffix[::-1])]
+                prefix_candidates.remove(prefix[::-1])
+                while empty_morpheme in prefix_candidates:
+                    prefix_candidates.remove(empty_morpheme)
+
+                for pre in prefix_candidates:
+                    for suf in suffix_candidates:
+                        if WordWrapper(pre[::-1] + suf) in self.forms:
+                            num_squares += 1
+
+                squares.append(num_squares)
+
+            self.metrics[word]["squares"] = self._normalize(squares)
+
+    def _calculate_economy(self):
+        for word, splits in self.training_data.items():
+            suffix_economy_values = []
+            prefix_economy_values = []
+
+            for prefix, suffix in splits:
+                # calculate suffix economy
+                if self.prefix_trie.is_branching(prefix):
+                    # get base candidates by removing likely actual prefixes
+                    suffix_candidates = self.prefix_trie.query(prefix)
+                    base_candidates = [x[::-1] for x in self.suffix_trie.query(suffix[::-1])]
+                    suffix_freq = self.suffix_trie.get_count(suffix[::-1])
+                    for x in base_candidates:
+                        if self.prefix_trie.get_count(x) > suffix_freq:
+                            base_candidates.remove(x)
+                    suffix_economy_values.append(len(base_candidates) / len(suffix_candidates))
+                else:
+                    suffix_economy_values.append(0)
+
+                # calculate prefix economy
+                if self.suffix_trie.is_branching(suffix):
+                    # get base candidates by removing likely actual suffixes
+                    prefix_candidates = [x[::-1] for x in self.suffix_trie.query(suffix[::-1])]
+                    base_candidates = self.prefix_trie.query(prefix)
+                    prefix_freq = self.prefix_trie.get_count(prefix)
+                    for x in base_candidates:
+                        if self.suffix_trie.get_count(x[::-1]) > prefix_freq:
+                            base_candidates.remove(x)
+                    prefix_economy_values.append(len(base_candidates) / len(prefix_candidates))
+                else:
+                    prefix_economy_values.append(0)
+
+            # normalize economy values by dividing by the highest respective value per word
+            norm_suffix_economy = self._normalize(suffix_economy_values)
+            norm_prefix_economy = self._normalize(prefix_economy_values)
+
+            self.metrics[word]["economy"] = [norm_suffix_economy, norm_prefix_economy]
+
+    def _entropy(self, distribution):
+        entropy = 0.0
+        total = sum(distribution)
+
+        if total == 0:
+            return 0.0
+
+        for v in distribution:
+            p = v / total
+            entropy -= p * math.log2(p)
+
+        return entropy
+
+    def _calculate_entropy(self):
+        for word, splits in self.training_data.items():
+            # get token successor varieties
+            suffix_token_varieties = self.prefix_trie.get_token_variety(word)
+            prefix_token_varieties = self.suffix_trie.get_token_variety(word)[::-1]
+
+            # calculate entropies
+            suffix_entropies = [self._entropy(x) for x in suffix_token_varieties[1:-1]]
+            prefix_entropies = [self._entropy(x) for x in prefix_token_varieties[1:-1]]
+
+            # normalize
+            norm_suffix_entropies = self._normalize(suffix_entropies)
+            norm_prefix_entropies = self._normalize(prefix_entropies)
+
+            self.metrics[word]["entropy"] = [norm_suffix_entropies, norm_prefix_entropies]
+
+    def _train(self, **kwargs):
+        self.threshold = kwargs.get("threshold") or 0.5
+
+        # Medina-Urrea (2007) suggests that the normalizing constant is calculated per word type,
+        # not on the entire corpus
+        self._count_squares()
+        self._calculate_economy()
+        self._calculate_entropy()
+
+        for word, metrics in self.metrics.items():
+            squares = metrics["squares"]
+            suffix_economy, prefix_economy = metrics["economy"]
+            suffix_entropy, prefix_entropy = metrics["entropy"]
+
+            # suffix and prefix affixiality are calculated separately here; a boundary is then inserted if
+            # one of them exceeds the threshold. It is not clear from the paper whether this is actually the
+            # intended segmentation strategy.
+            for i in range(len(squares)):
+                affixiality = max((squares[i] + prefix_entropy[i] + prefix_economy[i]) / 3,
+                                  (squares[i] + suffix_entropy[i] + suffix_economy[i]) / 3)
+                self.metrics[word]["affixiality"].append(affixiality)
+
+    def _postprocess(self):
+        for form in self.forms:
+            affixialities = self.metrics[form.unsegmented[0]]["affixiality"]
+            for i, af in enumerate(affixialities):
+                if af > self.threshold:
+                    form.split(i+1)
