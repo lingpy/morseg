@@ -3,7 +3,7 @@ from morseg.utils.wrappers import WordlistWrapper
 import traceback
 
 
-wl = WordlistWrapper.from_file("german.tsv")
+wl = WordlistWrapper.from_file("latin-nelex.tsv")
 
 models = [LSPVTokenizer, LSVTokenizer, LPVTokenizer]
 
@@ -14,6 +14,9 @@ for model in models:
         lsv_model = model(method=method, strategy="peak")
         try:
             lsv_model.train(wl)
+            f1, precision, recall = lsv_model.forms.f1_score()
+            print(f"F1: {f1}, PRECISION: {precision}, RECALL: {recall}\n")
+
             for f in lsv_model.get_segmentations():
                 print(f)
         except:
@@ -24,6 +27,10 @@ for model in models:
     lsv_model = model(strategy="subword")
     lsv_model.train(wl)
     print("subword\n")
+
+    f1, precision, recall = lsv_model.forms.f1_score()
+    print(f"F1: {f1}, PRECISION: {precision}, RECALL: {recall}\n")
+
     for f in lsv_model.get_segmentations():
         print(f)
 

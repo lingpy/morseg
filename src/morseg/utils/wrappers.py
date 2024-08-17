@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from collections import defaultdict
 from csv import DictReader
 from linse.typedsequence import Word, Morpheme
+
 
 
 class WordWrapper(Word):
@@ -16,7 +19,7 @@ class WordWrapper(Word):
             self.num_tokens = len(self.unsegmented[0])
             super().__init__(sum(self.gold_segmented))
 
-    def copy(self):
+    def copy(self) -> WordWrapper:
         return WordWrapper(self)
 
     def update(self, other):
@@ -53,11 +56,15 @@ class WordWrapper(Word):
 
         return False
 
-    def get_splits(self):
+    def get_splits(self, ignore_token=None):
         splits = []
 
         i = 0
         for m in self:
+            if ignore_token:
+                m = Morpheme(m)
+                while ignore_token in m:
+                    m.remove(ignore_token)
             i += len(m)
             splits.append(i)
 
@@ -138,7 +145,7 @@ class WordlistWrapper(list):
         self.form_dict = {f.unsegmented: f for f in forms}
         super().__init__(forms)
 
-    def copy(self):
+    def copy(self) -> WordlistWrapper:
         return WordlistWrapper([word.copy() for word in self])
 
     def __getitem__(self, item):
@@ -188,11 +195,11 @@ class WordlistWrapper(list):
 
         return vocabulary
 
-    def f1_score(self):
+    def f1_score(self, ignore_token=None):
         """
         Calculate precision, recall and f1 score as defined in Virpioja et al. (2011)
         """
-        pred_splits = [form.get_splits() for form in self]
+        pred_splits = [form.get_splits(ignore_token=ignore_token) for form in self]
         gold_splits = [form.get_gold_splits() for form in self]
         correct_splits = [set(pred) & set(gold) for pred, gold in zip(pred_splits, gold_splits)]
 

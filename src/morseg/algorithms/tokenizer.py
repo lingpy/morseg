@@ -113,15 +113,32 @@ class PairEncoding(Tokenizer):
     def _train(
             self,
             iterations=60,
-            threshold=3
+            threshold=3,
+            **kwargs
     ):
+        callbacks = kwargs.get("callbacks")
+        if callbacks:
+            self.training_history = collections.defaultdict(list)
+
         # merge most frequent bigram
         for _ in range(iterations):
             pairs = self.training_data.bigram_counts()
+            if len(pairs) == 0:
+                break
             best_pair = max(pairs, key=pairs.get)
             if pairs[best_pair] < threshold:
                 break
             self.training_data.merge(*best_pair)
+
+            # update training history
+            if callbacks:
+                if "alphabet_size" in callbacks:
+                    self.training_history["alphabet_size"].append(len(self.training_data.unigram_counts()))
+                if "f1" in callbacks:
+                    f1, precision, recall = self.training_data.f1_score()
+                    self.training_history["f1"].append(f1)
+                    self.training_history["precision"].append(precision)
+                    self.training_history["recall"].append(recall)
 
 
 class WordPiece(Tokenizer):
@@ -130,8 +147,12 @@ class WordPiece(Tokenizer):
         self.training_data.split_everywhere()
         self.training_data.add_wp_token(wp_token=wp_prefix)
 
-    def _train(self, iterations=60, threshold=0, wp_prefix="##"):
+    def _train(self, iterations=60, threshold=0, wp_prefix="##", **kwargs):
         alphabet = self.training_data.unigram_counts()
+
+        callbacks = kwargs.get("callbacks")
+        if callbacks:
+            self.training_history = collections.defaultdict(list)
 
         for _ in range(iterations):
             # count bigram frequencies
@@ -166,54 +187,19 @@ class WordPiece(Tokenizer):
 
             self.training_data.merge(best_first, best_second, wp_token=wp_prefix)
 
+            # update training history
+            if callbacks:
+                if "alphabet_size" in callbacks:
+                    alphabet_size = len([x for x in alphabet if alphabet[x] > 0])
+                    self.training_history["alphabet_size"].append(alphabet_size)
+                if "f1" in callbacks:
+                    f1, precision, recall = self.training_data.f1_score(ignore_token=wp_prefix)
+                    self.training_history["f1"].append(f1)
+                    self.training_history["precision"].append(precision)
+                    self.training_history["recall"].append(recall)
+
         # remove special prefix token from vocabulary
         self.training_data.remove_wp_token(wp_token=wp_prefix)
-
-
-class LetterSuccessorVariety(Tokenizer):
-
-    def _preprocess(self):
-        self.training_data = self.forms
-
-    def _train(self):
-        self.sv = collections.defaultdict(lambda: collections.defaultdict(int))
-        for word in self.training_data:
-            for morpheme in word:
-                for sound_a, sound_b in zip(["^"] + morpheme, morpheme + ["$"]):
-                    self.sv[sound_a][sound_b] += 1
-
-    def profile(self, word, threshold=1):
-        """
-        Makes a profile and determines break points.
-
-        The profile is used to break words.
-        """
-        out = []
-        for morpheme in word:
-            output = []
-            profile = []
-            for sound_a, sound_b in zip(morpheme[:-1], morpheme[1:]):
-                profile += [self.sv[sound_a][sound_b]]
-            # determine peaks (i < j) as our break points
-            break_points = [0]
-            for idx, (i, j) in enumerate(zip(profile[:-1], profile[1:])):
-                if j - i >= threshold:
-                    break_points += [idx + 1]
-            break_points += [len(morpheme)]
-            out += [(profile, break_points)]
-        return out
-
-    def __call__(self, word: Word, threshold=1):
-        break_points = self.profile(word, threshold=threshold)
-        out = []
-        for morpheme, (_, bp) in zip(word, break_points):
-            for (i, j) in zip(bp[:-1], bp[1:]):
-                out += [morpheme[i:j]]
-        return Word(out)
-
-    def get_segmentations(self):
-        for word in self.forms:
-            yield self(word.unsegmented)
 
 
 class Morfessor(Tokenizer):
