@@ -5,19 +5,18 @@ from csv import DictReader
 from linse.typedsequence import Word, Morpheme
 
 
-
 class WordWrapper(Word):
-    def __init__(self, tokens):
+    def __init__(self, tokens, **kwargs):
         if type(tokens) is WordWrapper:
             self.gold_segmented = tokens.gold_segmented
             self.unsegmented = tokens.unsegmented
             self.num_tokens = len(self.unsegmented[0])
-            super().__init__(tokens)
+            super().__init__(tokens, **kwargs)
         else:
             self.gold_segmented = Word(tokens)
             self.unsegmented = Word(sum(self.gold_segmented))
             self.num_tokens = len(self.unsegmented[0])
-            super().__init__(sum(self.gold_segmented))
+            super().__init__(sum(self.gold_segmented), **kwargs)
 
     def copy(self) -> WordWrapper:
         return WordWrapper(self)
@@ -87,7 +86,7 @@ class WordWrapper(Word):
             m2 = self[i + 1]
             if m1 == left and m2 == right:
                 if wp_token and wp_token in m2:
-                    m2 = Morpheme(m2)  # copy object to avoid manipulation of underlying data
+                    m2 = Morpheme(m2)  # copy object to avoid manipulation of underlying eval-data
                     m2.remove(wp_token)
                 self.pop(i)  # remove left
                 self.pop(i)  # remove right

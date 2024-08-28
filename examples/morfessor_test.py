@@ -9,7 +9,7 @@ def get_word(wf):
     return Word([x.split() for x in wf.split(" + ")])
 
 
-# load data
+# load eval-data
 with open("german.tsv") as f:
     words = []
     for row in csv.DictReader(f, delimiter="\t"):

@@ -25,7 +25,7 @@ class Tokenizer:
     def _copy_forms(self, words: WordlistWrapper):
         self.forms = words.copy()
 
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         self.training_data = self.forms
 
     def _train(self, **kwargs):
@@ -39,7 +39,7 @@ class Tokenizer:
             words: WordlistWrapper,
             **kwargs):
         self._copy_forms(words)
-        self._preprocess()
+        self._preprocess(**kwargs)
         self._train(**kwargs)
         self._postprocess()
 
@@ -103,10 +103,10 @@ class PairEncoding(Tokenizer):
     Code taken with modifications from https://www.geeksforgeeks.org/byte-pair-encoding-bpe-in-nlp/
     """
 
-    def __init__(self):
-        Tokenizer.__init__(self)
+    def __init__(self, **kwargs):
+        Tokenizer.__init__(self, **kwargs)
 
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         self.training_data = self.forms
         self.training_data.split_everywhere()
 
@@ -142,10 +142,11 @@ class PairEncoding(Tokenizer):
 
 
 class WordPiece(Tokenizer):
-    def _preprocess(self, wp_prefix="##"):
+    def _preprocess(self, wp_prefix="##", **kwargs):
         self.training_data = self.forms
         self.training_data.split_everywhere()
-        self.training_data.add_wp_token(wp_token=wp_prefix)
+        if wp_prefix:
+            self.training_data.add_wp_token(wp_token=wp_prefix)
 
     def _train(self, iterations=60, threshold=0, wp_prefix="##", **kwargs):
         alphabet = self.training_data.unigram_counts()
@@ -182,7 +183,8 @@ class WordPiece(Tokenizer):
 
             # remove special prefix from second part, add merged pair to the alphabet
             stripped_second = best_second.copy()
-            stripped_second.remove(wp_prefix)
+            if wp_prefix:
+                stripped_second.remove(wp_prefix)
             alphabet[best_first + stripped_second] = best_pair_freq
 
             self.training_data.merge(best_first, best_second, wp_token=wp_prefix)
@@ -199,16 +201,23 @@ class WordPiece(Tokenizer):
                     self.training_history["recall"].append(recall)
 
         # remove special prefix token from vocabulary
-        self.training_data.remove_wp_token(wp_token=wp_prefix)
+        if wp_prefix:
+            self.training_data.remove_wp_token(wp_token=wp_prefix)
 
 
 class Morfessor(Tokenizer):
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         if not morfessor:
             raise ValueError("You must install the morfessor software package")
         self.training_data = [(1, tuple(m[0])) for m in self.forms.unsegmented()]
 
     def _train(self, **kwargs):
+        # sanitize kwargs
+        kws = set(kwargs.keys())
+        for kw in kws:
+            if kw not in ["algorithm", "algorithm_params", "finish_threshold", "max_epochs"]:
+                kwargs.pop(kw)
+
         self.model = morfessor.BaselineModel()
         self.model.load_data(self.training_data)
         self.model.train_batch(**kwargs)
@@ -250,7 +259,7 @@ class LSVTokenizer(Tokenizer):
 
         super().__init__(**kwargs)
 
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         self.training_data = Trie(self.forms)
 
     def _calculate_type_variety(self, token_variety: list):
@@ -411,7 +420,7 @@ class LSVTokenizer(Tokenizer):
 
 
 class LPVTokenizer(LSVTokenizer):
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         self.training_data = Trie(self.forms, reverse=True)
 
     def _get_token_varieties(self):
@@ -466,9 +475,9 @@ class SquareEntropyTokenizer(Tokenizer):
     with an adjustable threshold.
     """
 
-    def _preprocess(self):
+    def _preprocess(self, **kwargs):
         # major parts of the method rely on measure about shared prefixes or suffixes;
-        # so storing the forms as tries (in both directions) seems to be the most convenient data structure
+        # so storing the forms as tries (in both directions) seems to be the most convenient eval-data structure
         self.prefix_trie = Trie(self.forms)
         self.suffix_trie = Trie(self.forms, reverse=True)
 

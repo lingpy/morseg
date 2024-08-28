@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 wl = WordlistWrapper.from_file("latin-nelex.tsv")
 
 # models = [SquareEntropyTokenizer, LSVTokenizer, LPVTokenizer, LSPVTokenizer, PairEncoding, WordPiece, Morfessor]
-models = [PairEncoding, WordPiece]
+models = [WordPiece]
 
 for model in models:
     model = model()
@@ -15,7 +15,7 @@ for model in models:
     print(model_name)
     print("\n")
 
-    model.train(wl, iterations=10000, threshold=0, callbacks=["alphabet_size", "f1"])
+    model.train(wl, wp_prefix=None, iterations=10000, threshold=0, callbacks=["alphabet_size", "f1"])
 
     fig, ax1 = plt.subplots()
 

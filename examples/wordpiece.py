@@ -9,7 +9,7 @@ def get_unsegmented_word(wf):
     return Word([[x for x in wf.split() if x != "+"]])
 
 
-# load data
+# load eval-data
 with open("german.tsv") as f:
     words = []
     for row in csv.DictReader(f, delimiter="\t"):
