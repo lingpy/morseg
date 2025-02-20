@@ -205,6 +205,89 @@ class WordPiece(Tokenizer):
             self.training_data.remove_wp_token(wp_token=wp_prefix)
 
 
+class UnigramSentencePiece(Tokenizer):
+    """How to use 
+    wordlist = ["einundzwanzig", "zweiundzwanzig"]
+    unigram_tok = UnigramSentencePiece(wordlist, vocab_size=100)
+    unigram_tok.train(wordlist)
+
+    tokenized = list(unigram_tok.tokenize(["dreiundzwanzig"])) 
+    print(tokenized)"""
+
+    def __init__(self, corpus, vocab_size=60):
+        super().__init__()
+        self.corpus = corpus
+        self.vocab_size = vocab_size
+        self.vocab = collections.Counter()
+        self.model = {}
+    
+    def _create_ngrams(self):
+        for word in self.corpus:
+            for char in word:
+                self.vocab[char] += 1
+            for i in range(len(word)):
+                for j in range(i + 1, len(word) + 1):
+                    subword = word[i:j]
+                    self.vocab[subword] += 1
+        return self.vocab
+    
+    def _compute_probs(self):
+        total_count = sum(self.vocab.values())
+        for token in self.vocab:
+            self.model[token] = math.log((self.vocab[token]) / 
+                                         (total_count))
+
+    def _likelihood(self):
+        likelihood = 0
+        for word in self.corpus:
+            word_prob = -math.inf  
+            for segmentation in self._segment_word(word):
+                subword_prob = sum(self.model.get(subword, -math.inf) for subword in segmentation)
+                word_prob = max(word_prob, subword_prob)
+            likelihood += word_prob
+        return likelihood
+    
+    def _prune_vocab(self):
+        if len(self.vocab) <= self.vocab_size:
+            return  
+        
+        sorted_vocab = sorted(self.vocab.keys(), key=lambda t: self.vocab[t], reverse=True)
+        self.vocab = collections.Counter({token: self.vocab[token] for token in sorted_vocab[:self.vocab_size]})
+
+        self._compute_probs()
+        
+    
+    def _train(self, max_iterations=60, convergence_threshold=1e-4):
+        self._create_ngrams()
+        self._compute_probs()
+        prev_likelihood = self._likelihood()
+        
+        for i in range(max_iterations):
+            self._prune_vocab()
+            likelihood = self._likelihood()
+            if abs(likelihood - prev_likelihood) < convergence_threshold:
+                break
+            prev_likelihood = likelihood
+
+    def _segment_word(self, word): #Can be replaced with the Viterbi algorithm.
+        segmentations = []
+        def backtrack(idx, path):
+            if idx == len(word):
+                segmentations.append(path[:])
+                return
+            for j in range(idx + 1, len(word) + 1):
+                subword = word[idx:j]
+                if subword in self.vocab:
+                    backtrack(j, path + [subword])
+        backtrack(0, [])
+        return segmentations if segmentations else [[word]]
+    
+    def _tokenize(self, word, **kwargs):
+        segmentations = self._segment_word(word)
+        best_seg = max(segmentations, key=lambda seg: sum(self.model.get(s, -math.inf) for s in seg))
+        return best_seg
+
+
 class Morfessor(Tokenizer):
     def _preprocess(self, **kwargs):
         if not morfessor:
