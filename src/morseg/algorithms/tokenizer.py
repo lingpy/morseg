@@ -205,6 +205,134 @@ class WordPiece(Tokenizer):
             self.training_data.remove_wp_token(wp_token=wp_prefix)
 
 
+class UnigramSentencePiece(Tokenizer):
+    """How to use 
+    wordlist = ["einundzwanzig", "zweiundzwanzig"]
+    unigram_tok = UnigramSentencePiece(wordlist, vocab_size=100)
+    unigram_tok.train(wordlist)
+
+    tokenized = list(unigram_tok.tokenize(["dreiundzwanzig"])) 
+    print(tokenized)"""
+
+    def __init__(self):
+        super().__init__()
+
+    def _preprocess(self, vocab_size=60, **kwargs):
+        super()._preprocess(**kwargs)
+        self.vocab = collections.Counter()
+        self.vocab_size = vocab_size
+        self._create_ngrams()
+        self._compute_probs()
+    
+    def _create_ngrams(self):
+        for word in self.training_data:
+            word = word.unsegmented[0]
+            for i in range(len(word)):
+                for j in range(i + 1, len(word) + 1):
+                    subword = word[i:j]
+                    self.vocab[subword] += 1
+        return self.vocab
+
+    def _compute_probs(self):
+        self.model = {}
+        total_count = sum(self.vocab.values())
+        for token in self.vocab:
+            self.model[token] = -math.log((self.vocab[token]) / total_count)
+
+    def _loss(self, segmentation):
+        """
+        calculate the negative log-likelihood for a given segmentation
+        """
+        score = 0
+        for token in segmentation:
+            if token in self.model:
+                score += self.model[token]
+            else:
+                return math.inf
+
+        return score
+    
+    def _score(self):
+        """
+        Calculates scores for each n-gram (with n > 1). Scores indicate how much the loss would increase when this
+        n-gram would be removed from the vocabulary -- n-grams with high scores are therefore more important for the
+        model.
+        """
+        scores = collections.defaultdict(float)
+        for word in self.training_data:
+            word = word.unsegmented[0]
+            # get all segmentations for word, retrieve the lowest loss
+            segmentations = self._segment_word(word)
+            best_score = math.inf
+            best_segmentation = None
+            for s in segmentations:
+                score = self._loss(s)
+                if score < best_score:
+                    best_score = score
+                    best_segmentation = s
+            # now calculate the best loss under the assumption that an n-gram is removed from the vocabulary
+            for token in best_segmentation:
+                valid_segmentations = [s for s in segmentations if token not in s]
+                best_remaining_score = math.inf
+                for s in valid_segmentations:
+                    best_remaining_score = min(best_remaining_score, self._loss(s))
+                scores[token] += best_remaining_score - best_score
+
+        # a token that does not occur in any of the best segmentations has a score of 0
+        return {token: scores[token] for token in self.vocab if len(token) > 1}
+
+    def _log_likelihood(self):
+        return sum([self._tokenize(w.unsegmented[0])[1] for w in self.training_data])
+    
+    def _prune_vocab(self, percent_to_remove=0.1):
+        scores = self._score()
+        sorted_scores = list(sorted(scores.items(), key=lambda x: x[1]))
+        cutoff_idx = int(len(sorted_scores) * percent_to_remove)
+        for token, _ in sorted_scores[:cutoff_idx]:
+            self.vocab.pop(token)
+            if len(self.vocab) <= self.vocab_size:
+                break
+
+        self._compute_probs()
+
+    def _train(self, max_iterations=60, convergence_threshold=1e-4, percent_to_remove=0.1, **kwargs):
+        prev_likelihood = self._log_likelihood()
+        print(len(self.vocab))
+
+        for i in range(max_iterations):
+            self._prune_vocab()
+            print(len(self.vocab))
+            likelihood = self._log_likelihood()
+            if abs(likelihood - prev_likelihood) < convergence_threshold or len(self.vocab) <= self.vocab_size:
+                break
+            prev_likelihood = likelihood
+
+    def _postprocess(self):
+        for form in self.forms:
+            segmented, _ = self._tokenize(form.unsegmented[0])
+            form.update(segmented)
+
+    def _segment_word(self, word): #Can be replaced with the Viterbi algorithm.
+        segmentations = self._backtrack(0, [], word)
+        return segmentations
+
+    def _backtrack(self, idx, path, word):
+        if idx == len(word):
+            return [path]
+        segmentations = []
+        for j in range(idx + 1, len(word) + 1):
+            subword = word[idx:j]
+            if subword in self.vocab:
+                segmentations += self._backtrack(j, path + [subword], word)
+        return segmentations
+    
+    def _tokenize(self, word, **kwargs):
+        segmentations = self._segment_word(word)
+        best_seg = min(segmentations, key=lambda seg: self._loss(seg))
+        best_loss = self._loss(best_seg)
+        return best_seg, best_loss
+
+
 class Morfessor(Tokenizer):
     def _preprocess(self, **kwargs):
         if not morfessor:

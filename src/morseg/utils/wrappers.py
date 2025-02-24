@@ -131,6 +131,9 @@ class WordWrapper(Word):
 
         return super().__eq__(other) and self.gold_segmented == other.gold_segmented
 
+    def __hash__(self):
+        return hash(repr(self))
+
 
 class WordlistWrapper(list):
     def __init__(self, forms):
