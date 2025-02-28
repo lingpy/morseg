@@ -8,6 +8,7 @@ import random
 from linse.typedsequence import Word, Morpheme
 from morseg.utils.wrappers import WordWrapper, WordlistWrapper
 from morseg.datastruct import Trie
+from tqdm import tqdm
 
 import collections
 
@@ -121,7 +122,7 @@ class PairEncoding(Tokenizer):
             self.training_history = collections.defaultdict(list)
 
         # merge most frequent bigram
-        for _ in range(iterations):
+        for _ in tqdm(range(iterations)):
             pairs = self.training_data.bigram_counts()
             if len(pairs) == 0:
                 break
@@ -130,15 +131,20 @@ class PairEncoding(Tokenizer):
                 break
             self.training_data.merge(*best_pair)
 
+            alphabet_size = len(self.training_data.unigram_counts())
+
             # update training history
             if callbacks:
                 if "alphabet_size" in callbacks:
-                    self.training_history["alphabet_size"].append(len(self.training_data.unigram_counts()))
+                    self.training_history["alphabet_size"].append(alphabet_size)
                 if "f1" in callbacks:
                     f1, precision, recall = self.training_data.f1_score()
                     self.training_history["f1"].append(f1)
                     self.training_history["precision"].append(precision)
                     self.training_history["recall"].append(recall)
+
+            if alphabet_size == kwargs.get("vocab_size", 0):
+                break
 
 
 class WordPiece(Tokenizer):
@@ -155,7 +161,7 @@ class WordPiece(Tokenizer):
         if callbacks:
             self.training_history = collections.defaultdict(list)
 
-        for _ in range(iterations):
+        for _ in tqdm(range(iterations)):
             # count bigram frequencies
             bigram_freq = self.training_data.bigram_counts()
 
@@ -189,6 +195,17 @@ class WordPiece(Tokenizer):
 
             self.training_data.merge(best_first, best_second, wp_token=wp_prefix)
 
+            clean_alphabet = set()
+            for key, value in alphabet.items():
+                clean_key = key.copy()
+                if wp_prefix:
+                    while wp_prefix in clean_key:
+                        clean_key.remove(wp_prefix)
+                if value > 0:
+                    clean_alphabet.add(tuple(clean_key))
+
+            alphabet_size = len(clean_alphabet)
+
             # update training history
             if callbacks:
                 if "alphabet_size" in callbacks:
@@ -200,28 +217,26 @@ class WordPiece(Tokenizer):
                     self.training_history["precision"].append(precision)
                     self.training_history["recall"].append(recall)
 
+            # stop if desired alphabet size is reached
+            if alphabet_size == kwargs.get("vocab_size", 0):
+                break
+
         # remove special prefix token from vocabulary
         if wp_prefix:
             self.training_data.remove_wp_token(wp_token=wp_prefix)
 
 
 class UnigramSentencePiece(Tokenizer):
-    """How to use 
-    wordlist = ["einundzwanzig", "zweiundzwanzig"]
-    unigram_tok = UnigramSentencePiece(wordlist, vocab_size=100)
-    unigram_tok.train(wordlist)
-
-    tokenized = list(unigram_tok.tokenize(["dreiundzwanzig"])) 
-    print(tokenized)"""
-
     def __init__(self):
         super().__init__()
 
-    def _preprocess(self, vocab_size=60, **kwargs):
+    def _preprocess(self, vocab_size=60, count_single_characters=False, **kwargs):
         super()._preprocess(**kwargs)
         self.vocab = collections.Counter()
         self.vocab_size = vocab_size
         self._create_ngrams()
+        if not count_single_characters:
+            self.vocab_size += len({x for x in self.vocab if len(x) == 1})
         self._compute_probs()
     
     def _create_ngrams(self):
@@ -237,7 +252,8 @@ class UnigramSentencePiece(Tokenizer):
         self.model = {}
         total_count = sum(self.vocab.values())
         for token in self.vocab:
-            self.model[token] = -math.log((self.vocab[token]) / total_count)
+            # use tuples as keys for convenient lookup
+            self.model[tuple(token)] = -math.log((self.vocab[token]) / total_count)
 
     def _loss(self, segmentation):
         """
@@ -245,6 +261,7 @@ class UnigramSentencePiece(Tokenizer):
         """
         score = 0
         for token in segmentation:
+            token = tuple(token)
             if token in self.model:
                 score += self.model[token]
             else:
@@ -262,28 +279,25 @@ class UnigramSentencePiece(Tokenizer):
         for word in self.training_data:
             word = word.unsegmented[0]
             # get all segmentations for word, retrieve the lowest loss
-            segmentations = self._segment_word(word)
-            best_score = math.inf
-            best_segmentation = None
-            for s in segmentations:
-                score = self._loss(s)
-                if score < best_score:
-                    best_score = score
-                    best_segmentation = s
+            best_segmentation, best_score = self._viterbi(word)
             # now calculate the best loss under the assumption that an n-gram is removed from the vocabulary
             for token in best_segmentation:
-                valid_segmentations = [s for s in segmentations if token not in s]
-                best_remaining_score = math.inf
-                for s in valid_segmentations:
-                    best_remaining_score = min(best_remaining_score, self._loss(s))
+                if len(token) == 1:
+                    continue
+                _, best_remaining_score = self._viterbi(word, ignore=token)
                 scores[token] += best_remaining_score - best_score
 
         # a token that does not occur in any of the best segmentations has a score of 0
         return {token: scores[token] for token in self.vocab if len(token) > 1}
 
     def _log_likelihood(self):
-        return sum([self._tokenize(w.unsegmented[0])[1] for w in self.training_data])
-    
+        log_likelihood = 0
+        for form in tqdm(self.training_data):
+            form = form.unsegmented[0]
+            log_likelihood += self._viterbi(form)[1]
+
+        return log_likelihood
+
     def _prune_vocab(self, percent_to_remove=0.1):
         scores = self._score()
         sorted_scores = list(sorted(scores.items(), key=lambda x: x[1]))
@@ -296,12 +310,16 @@ class UnigramSentencePiece(Tokenizer):
         self._compute_probs()
 
     def _train(self, max_iterations=60, convergence_threshold=1e-4, percent_to_remove=0.1, **kwargs):
-        prev_likelihood = self._log_likelihood()
-        print(len(self.vocab))
+        callbacks = kwargs.get("callbacks", {})
+        if callbacks:
+            self.training_history = collections.defaultdict(list)
 
-        for i in range(max_iterations):
+        prev_likelihood = self._log_likelihood()
+
+        for _ in tqdm(range(max_iterations)):
             self._prune_vocab()
-            print(len(self.vocab))
+            if "alphabet_size" in callbacks:
+                self.training_history["alphabet_size"].append(len({x for x in self.vocab if len(x) > 1}))
             likelihood = self._log_likelihood()
             if abs(likelihood - prev_likelihood) < convergence_threshold or len(self.vocab) <= self.vocab_size:
                 break
@@ -309,28 +327,38 @@ class UnigramSentencePiece(Tokenizer):
 
     def _postprocess(self):
         for form in self.forms:
-            segmented, _ = self._tokenize(form.unsegmented[0])
+            segmented, _ = self._viterbi(form.unsegmented[0])
             form.update(segmented)
 
-    def _segment_word(self, word): #Can be replaced with the Viterbi algorithm.
-        segmentations = self._backtrack(0, [], word)
-        return segmentations
+    def _viterbi(self, word, ignore=None):
+        word = tuple(word)
+        eow_index = len(word) + 1
+        best_slices = [None] * eow_index
+        likelihood_scores = [0] * eow_index
 
-    def _backtrack(self, idx, path, word):
-        if idx == len(word):
-            return [path]
-        segmentations = []
-        for j in range(idx + 1, len(word) + 1):
-            subword = word[idx:j]
-            if subword in self.vocab:
-                segmentations += self._backtrack(j, path + [subword], word)
-        return segmentations
-    
-    def _tokenize(self, word, **kwargs):
-        segmentations = self._segment_word(word)
-        best_seg = min(segmentations, key=lambda seg: self._loss(seg))
-        best_loss = self._loss(best_seg)
-        return best_seg, best_loss
+        # forward step
+        for eow in range(1, len(word) + 1):
+            likelihood_scores[eow] = math.inf
+            for bow in range(eow):
+                slice = word[bow:eow]
+                if tuple(slice) in self.model and slice != ignore:
+                    score = likelihood_scores[bow] + self.model[tuple(slice)]
+                    if score < likelihood_scores[eow]:
+                        likelihood_scores[eow] = score
+                        best_slices[eow] = (bow, eow)
+
+        # backward step
+        subwords = []
+        next_slice = best_slices[-1]
+
+        while next_slice is not None:  # best_slices at index 0 is None
+            bow, eow = next_slice
+            subw = word[bow:eow]
+            subwords.append(subw)
+            next_slice = best_slices[bow]
+        subwords.reverse()
+
+        return subwords, likelihood_scores[-1]
 
 
 class Morfessor(Tokenizer):
