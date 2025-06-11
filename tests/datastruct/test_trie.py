@@ -1,5 +1,6 @@
 from morseg.datastruct import Trie, TrieNode
 from morseg.utils.wrappers import WordWrapper
+from linse.typedsequence import Morpheme, Word
 from random import shuffle
 
 import pytest
@@ -20,7 +21,7 @@ def words():
         ["b", "o", "g", "u", "s"]
     ]
 
-    return words
+    return [WordWrapper(w) for w in words]
 
 
 def test_init(trie):
@@ -144,12 +145,11 @@ def test_query(trie, words):
     ]
     result = trie.query(["b", "i"])
     assert len(result) == 4
-    returned_forms = [form for form, count in result]
-    assert all(x in ref for x in returned_forms)
+    assert all(x in ref for x in result)
 
     # querying of a full word
     word = ["b", "i", "g", "g", "e", "r"]
-    result = trie.query(word)
+    result = trie.query(word, freq=True)
     assert len(result) == 1
     assert result[0][0] == word
     assert result[0][1] == 1
@@ -161,26 +161,24 @@ def test_query(trie, words):
     ]
     result = trie.query(["b", "i", "g"])
     assert len(result) == 2
-    returned_forms = [form for form, count in result]
-    assert all(x in ref for x in returned_forms)
+    assert all(x in ref for x in result)
 
     # empty query should return all words contained in trie
     result = trie.query([])
     assert len(result) == 5
-    returned_forms = [form for form, count in result]
-    print(returned_forms)
+    print(result)
     print(words)
-    assert all(x in words for x in returned_forms)
+    assert all(WordWrapper(x) in words for x in result)
 
     # should return an empty list if prefix is not found in the trie
     assert trie.query(["a"]) == []
 
     # add a word for the second time, count should be updated
-    word = ["b", "o", "g", "u", "s"]
+    word = WordWrapper(["b", "o", "g", "u", "s"])
     trie.insert(word)
-    result = trie.query(["b", "o"])
+    result = trie.query(["b", "o"], freq=True)
     assert len(result) == 1
-    assert result[0][0] == word
+    assert result[0][0] == word.unsegmented[0]
     assert result[0][1] == 2
 
 
@@ -223,3 +221,105 @@ def test_node_equals():
     assert node != ""
     assert node != 2
     assert node != Trie()
+
+
+def test_custom_eos_symbol():
+    t = Trie(eos_symbol="!")
+    assert t.EOS_SYMBOL == "!"
+
+
+def test_init_with_words(words):
+    t = Trie(words=words)
+    # check if all words have been inserted and accounted for
+    assert t.root.counter == 5
+
+    # check parameters of first node
+    node = t.root.children.get("b")
+    assert node.char == "b"
+    assert node.counter == 5
+    assert len(node.children) == 2
+    assert "i" in node.children.keys()
+    assert "o" in node.children.keys()
+
+
+def test_input_datatype(trie):
+    with pytest.raises(TypeError):
+        trie.insert(1)
+
+    with pytest.raises(TypeError):
+        trie.insert(["l", "i", "s", "t"])
+
+    with pytest.raises(TypeError):
+        trie.insert("string")
+
+
+def test_reverse_trie(words):
+    trie = Trie(reverse=True)
+    trie.insert_all(words)
+
+    assert trie.query(["o", "g", "n", "i", "b"])
+    assert "b" not in trie.root.children
+
+
+def test_token_variety(trie, words):
+    trie.insert_all(words)
+
+    # query forward trie
+    token_var = trie.get_token_variety(words[0]) # b i n g o
+    assert len(token_var) == len(words[0].unsegmented[0]) + 1
+    assert token_var[0] == [5]
+    assert set(token_var[1]) == {4, 1}
+    assert token_var[-1] == [1]
+
+    # query backward trie
+    t_backwards = Trie(reverse=True)
+    t_backwards.insert_all(words)
+    # after the first letter, there should be no variety (bingo is the only word ending in 'o')
+    assert t_backwards.get_token_variety(words[0])[1:] == 5 * [[1]]
+
+    # query forward trie with word that is not occurring
+    word = WordWrapper(["b", "o", "n", "u", "s"])
+    token_var = trie.get_token_variety(word)
+    assert len(token_var) == len(word.unsegmented[0]) + 1
+    assert token_var[0] == [5]
+    assert set(token_var[1]) == {4, 1}
+    assert token_var[2] == [1]
+    assert token_var[3:] == 3 * [[0]]
+
+
+def test_is_branching(trie, words):
+    trie.insert_all(words)
+
+    assert trie.is_branching(Morpheme(["b"]))
+    assert not trie.is_branching(Morpheme(["b", "o"]))
+    # should return False for unknown prefixes
+    assert not trie.is_branching(Morpheme(["p"]))
+
+
+def test_get_count(trie, words):
+    trie.insert_all(words)
+
+    assert trie.get_count(Morpheme(["b"])) == 5
+    assert trie.get_count(Morpheme(["b", "o"])) == 1
+    assert trie.get_count(Morpheme(["b", "i"])) == 4
+    assert trie.get_count(Morpheme(["b", "u"])) == 0
+
+
+def test_get_node(trie, words):
+    trie.insert_all(words)
+
+    assert (trie._get_node(Morpheme(["b", "o"])) == trie._get_node(Word([["b", "o"]])))
+    assert trie._get_node(Morpheme(["b", "u"])) is None
+
+
+def test_get_subwords(trie, words):
+    trie.insert_all(words)
+
+    w = Word([["b", "i", "g", "g", "e", "r"]])
+    wr = WordWrapper(w)
+
+    assert trie.get_subwords(w) == trie.get_subwords(wr)
+    assert len(trie.get_subwords(w)) == 2
+    assert ["b", "i", "g"] in trie.get_subwords(w)
+
+    assert ["b", "i", "g"] in trie.get_subwords(Word(["b", "i", "g", "p"]))

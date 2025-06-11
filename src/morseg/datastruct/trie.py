@@ -23,7 +23,7 @@ class Trie(object):
             self.insert_all(words)
 
     def _initialize_root(self):
-        self.root = TrieNode("")
+        self.root = TrieNode("", eos_symbol=self.EOS_SYMBOL)
 
     def insert(self, word: WordWrapper):
         """Insert a word into the trie"""
@@ -38,12 +38,15 @@ class Trie(object):
         for char in word:
             node = node.add_child(char)
 
-    def preprocess_word(self, word, remove_boundaries=True):
+    def preprocess_word(self, word):
         if type(word) is not WordWrapper:
             raise TypeError()
 
         # get a copy of the unsegmented "single morpheme" word
         word = Morpheme(word.unsegmented[0])
+
+        while self.EOS_SYMBOL in word[:-1]:
+            word.remove(self.EOS_SYMBOL)
 
         # reverse the word if specified as backward trie
         if self.reverse:
@@ -236,11 +239,8 @@ class Trie(object):
 
 class TrieNode:
     """A node in the trie structure"""
-    EOS_SYMBOL = Trie.EOS_SYMBOL
-
-    def __init__(self, char, eos_symbol=None):
-        if eos_symbol:
-            self.EOS_SYMBOL = eos_symbol
+    def __init__(self, char, eos_symbol=Trie.EOS_SYMBOL):
+        self.EOS_SYMBOL = eos_symbol
 
         # the character stored in this node
         self.char = char
@@ -256,7 +256,7 @@ class TrieNode:
         if char in self.children:
             child_node = self.children[char]
         else:
-            child_node = type(self)(char)
+            child_node = type(self)(char, eos_symbol=self.EOS_SYMBOL)
             self.children[char] = child_node
 
         self.counter += 1
@@ -271,4 +271,4 @@ class TrieNode:
             return False
 
         return (self.char == other.char and self.counter == other.counter
-                and self.children.keys() == other.children.keys())
+                and self.children.keys() == other.children.keys() and self.EOS_SYMBOL == other.EOS_SYMBOL)
