@@ -1,4 +1,5 @@
-from morseg.datastruct import Trie, TrieNode, EOS_SYMBOL
+from morseg.datastruct import Trie, TrieNode
+from morseg.utils.wrappers import WordWrapper
 from random import shuffle
 
 import pytest
@@ -28,7 +29,7 @@ def test_init(trie):
 
 
 def test_insert(trie):
-    word = ["t", "e", "s", "t", EOS_SYMBOL]
+    word = WordWrapper(["t", "e", "s", "t", Trie.EOS_SYMBOL])
     trie.insert(word)
 
     # check if root node is set up correctly
@@ -48,23 +49,23 @@ def test_insert(trie):
     while node.children:
         print("CURRENT CHAR: " + node.char)
         print("NEXT ")
-        next_char = word[i]
+        next_char = word.unsegmented[0][i]
         node = node.children.get(next_char)
         assert node.char == next_char
         assert node.counter == 1
 
         # there should not be any children at a node that indicates the end of a sequence
-        if node.char == EOS_SYMBOL:
+        if node.char == Trie.EOS_SYMBOL:
             assert len(node.children) == 0
         else:
             assert len(node.children) == 1
         i += 1
 
     # check whether protected symbols are handled correctly
-    word2 = ["t", "e", "s", "t"]
+    word2 = WordWrapper(["t", "e", "s", "t"])
     trie2 = Trie()
     trie2.insert(word2)
-    word3 = ["t", "e", EOS_SYMBOL, EOS_SYMBOL, "s", "t", EOS_SYMBOL]
+    word3 = WordWrapper(["t", "e", Trie.EOS_SYMBOL, Trie.EOS_SYMBOL, "s", "t", Trie.EOS_SYMBOL])
     trie3 = Trie()
     trie3.insert(word3)
     assert trie == trie2 == trie3
@@ -97,7 +98,7 @@ def test_insert_all(trie, words):
     assert node.char == "g"
     assert len(node.children) == 2
     assert "g" in node.children.keys()
-    assert EOS_SYMBOL in node.children.keys()
+    assert Trie.EOS_SYMBOL in node.children.keys()
 
 
 def test_eq(trie, words):
