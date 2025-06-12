@@ -6,6 +6,22 @@ from linse.typedsequence import Word, Morpheme
 
 
 class WordWrapper(Word):
+    """
+    A wrapper class for a word form, consisting of morphemes, with three levels of annotation:
+    The predicted segmentation, the gold standard segmentation, and the unsegmented form.
+
+    Usage:
+    >>> w = WordWrapper([["a", "b", "c"], ["a"], ["b"]])
+    >>> for i in range(1, len(w[0])):
+    >>>     w.split(i)
+    >>>     print(w)
+    >>> w.merge(Morpheme(["a"]), Morpheme(["b"]))
+    >>> print(w)
+    >>> print(w.has_split_at(0))  # False
+    >>> print(w.has_split_at(2))  # True
+    >>> print(w.has_split_at(4))  # False
+    >>> print(w.has_split_at(5))  # False
+    """
     def __init__(self, tokens, **kwargs):
         if type(tokens) is WordWrapper:
             self.gold_segmented = tokens.gold_segmented
@@ -65,7 +81,8 @@ class WordWrapper(Word):
                 while ignore_token in m:
                     m.remove(ignore_token)
             i += len(m)
-            splits.append(i)
+            if i > 0:
+                splits.append(i)
 
         return splits[:-1]
 
@@ -136,6 +153,34 @@ class WordWrapper(Word):
 
 
 class WordlistWrapper(list):
+    """
+    A wrapper class for a wordlist, consisting of WordWrapper objects.
+
+    Usage example:
+        >>> wl = WordlistWrapper(
+        >>> [
+        >>>     [["a", "b", "c"], ["a"], ["b"]],
+        >>>     [["d", "e"], ["g"]]
+        >>> ]
+        >>> )
+        >>>
+        >>> for x in wl:
+        >>> print(x)
+        >>>
+        >>> for x in wl.gold_segmented():
+        >>>     print(x)
+        >>>
+        >>> wl[0].split(1)
+        >>> wl[0].split(2)
+        >>> wl[0].split(3)
+        >>> wl[0].split(4)
+        >>>
+        >>> print(wl[0])
+        >>>
+        >>> wl.merge(Morpheme(["a"]), Morpheme(["b"]))
+        >>> print(wl[0])
+    """
+
     def __init__(self, forms):
         """
         Wraps forms into WordWrapper objects. Forms are expected to be already sanitized (not containing slash notation,
@@ -254,47 +299,3 @@ class WordlistWrapper(list):
             preprocessed_forms.append(word)
 
         return preprocessed_forms
-
-
-if __name__ == "__main__":
-    ################################
-    # ad hoc testing - WordWrapper #
-    ################################
-
-    w = WordWrapper([["a", "b", "c"], ["a"], ["b"]])
-    for i in range(1, len(w[0])):
-        w.split(i)
-        print(w)
-    w.merge(Morpheme(["a"]), Morpheme(["b"]))
-    print(w)
-    print(w.has_split_at(0))  # False
-    print(w.has_split_at(2))  # True
-    print(w.has_split_at(4))  # False
-    print(w.has_split_at(5))  # False
-
-    ####################################
-    # ad hoc testing - WordlistWrapper #
-    ####################################
-
-    wl = w = WordlistWrapper(
-        [
-            [["a", "b", "c"], ["a"], ["b"]],
-            [["d", "e"], ["g"]]
-        ]
-    )
-
-    for x in wl:
-        print(x)
-
-    for x in wl.gold_segmented():
-        print(x)
-
-    wl[0].split(1)
-    wl[0].split(2)
-    wl[0].split(3)
-    wl[0].split(4)
-
-    print(wl[0])
-
-    wl.merge(Morpheme(["a"]), Morpheme(["b"]))
-    print(wl[0])
