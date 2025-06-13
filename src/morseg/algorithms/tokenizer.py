@@ -254,20 +254,6 @@ class UnigramSentencePiece(Tokenizer):
         for token in self.vocab:
             # use tuples as keys for convenient lookup
             self.model[tuple(token)] = -math.log((self.vocab[token]) / total_count)
-
-    def _loss(self, segmentation):
-        """
-        calculate the negative log-likelihood for a given segmentation
-        """
-        score = 0
-        for token in segmentation:
-            token = tuple(token)
-            if token in self.model:
-                score += self.model[token]
-            else:
-                return math.inf
-
-        return score
     
     def _score(self):
         """

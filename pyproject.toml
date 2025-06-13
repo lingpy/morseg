@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "morseg"
+version = "0.1"
+description = "Morpheme Segmentation in Multi- and Monolingual Wordlists"
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "Arne Rubehn", email = "arne.rubehn@uni-passau.de" },
+    { name = "Johann-Mattis List", email = "mattis.list@uni-passau.de" }
+]
+maintainers = [
+    { name = "Arne Rubehn", email = "arne.rubehn@uni-passau.de" },
+    { name = "Johann-Mattis List", email = "mattis.list@uni-passau.de" }
+]
+license = { text = "MIT" }
+keywords = ["linguistics", "morpheme segmentation", "computational linguistics"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "linse",
+    "morfessor",
+    "tqdm"
+]
+
+[project.urls]
+Homepage = "https://github.com/calc-project/morseg/"
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "wheel",
+    "twine",
+    "sphinx",
+    "tox"
+]
+test = [
+    "pytest",
+    "coverage",
+    "pytest-mock",
+    "pytest-cov"
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+morseg = ["data/*"]
+
+[tool.pytest.ini_options]
+pythonpath = "src"
+testpaths = ["tests"]
+addopts = "--cov=morseg --cov-report term-missing"
+
+[tool.coverage.run]
+source = ["morseg", "tests"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.flake8]
+ignore = ["E711", "E712", "D100", "D101", "D103", "D102", "D301", "E731"]
+max-line-length = 100
+exclude = [".tox", "cython"]
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py38, py39, py310, py311, py312
+isolated_build = true
+skip_missing_interpreter = true
+
+[testenv]
+deps = .[test]
+commands = pytest {posargs}
+"""
