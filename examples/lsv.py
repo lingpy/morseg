@@ -1,9 +1,10 @@
 from morseg.algorithms.tokenizer import LSVTokenizer, LPVTokenizer, LSPVTokenizer
 from morseg.utils.wrappers import WordlistWrapper
+from pathlib import Path
 import traceback
 
 
-wl = WordlistWrapper.from_file("latin-nelex.tsv")
+wl = WordlistWrapper.from_file(Path(__file__).parent.parent / "eval" / "eval-data" / "latin-nelex.tsv")
 
 models = [LSPVTokenizer, LSVTokenizer, LPVTokenizer]
 
