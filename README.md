@@ -1,6 +1,19 @@
 # Morpheme Segmentation in Multi- and Monolingual Wordlists 
 
-This package provides implementations for several algorithms by which words in a wordlist can be segmented into morphemes. 
+This package provides implementations for several algorithms by which words in a wordlist can be segmented into morphemes.
+
+If you use this software package, please cite it accordingly:
+
+> Rubehn, A. and J.-M. List (2025). MorSeg: A Python package for morpheme segmentation in multi- and monolingual wordlists [Software Library, Version 0.1]. Chair for Multilingual Computational Linguistics, University of Passau.
+
+
+## Installation
+
+This package can be conveniently installed using pip:
+
+```
+pip install morseg
+```
 
 ## Basic Usage
 
